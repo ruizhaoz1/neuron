@@ -1,9 +1,8 @@
 import { NeuronWalletActions, AppActions, StateDispatch } from 'states/stateProvider/reducer'
 import { getNeuronWalletState } from 'services/remote'
-import initStates from 'states/initStates'
-import { Routes, ErrorCode } from 'utils/const'
+import initStates from 'states/init'
+import { RoutePath, ErrorCode, addressesToBalance, isSuccessResponse } from 'utils'
 import { WalletWizardPath } from 'components/WalletWizard'
-import { addressesToBalance } from 'utils/formatters'
 import {
   wallets as walletsCache,
   addresses as addressesCache,
@@ -15,7 +14,7 @@ import {
 export const initAppState = () => (dispatch: StateDispatch, history: any) => {
   getNeuronWalletState()
     .then(res => {
-      if (res.status === 1) {
+      if (isSuccessResponse(res)) {
         const {
           wallets = [],
           currentWallet: wallet = initStates.wallet,
@@ -25,7 +24,6 @@ export const initAppState = () => (dispatch: StateDispatch, history: any) => {
           currentNetworkID = '',
           syncedBlockNumber = '',
           connectionStatus = false,
-          codeHash = '',
         } = res.result
         dispatch({
           type: NeuronWalletActions.InitAppState,
@@ -37,13 +35,12 @@ export const initAppState = () => (dispatch: StateDispatch, history: any) => {
             currentNetworkID,
             syncedBlockNumber,
             connectionStatus,
-            codeHash,
           },
         })
         if (!wallet) {
-          history.push(`${Routes.WalletWizard}${WalletWizardPath.Welcome}`)
+          history.push(`${RoutePath.WalletWizard}${WalletWizardPath.Welcome}`)
         } else {
-          history.push(Routes.Overview)
+          history.push(RoutePath.Overview)
         }
 
         currentWalletCache.save(wallet)
@@ -52,11 +49,11 @@ export const initAppState = () => (dispatch: StateDispatch, history: any) => {
         networksCache.save(networks)
         currentNetworkIDCache.save(currentNetworkID)
       } else {
-        history.push(`${Routes.WalletWizard}${WalletWizardPath.Welcome}`)
+        history.push(`${RoutePath.WalletWizard}${WalletWizardPath.Welcome}`)
       }
     })
     .catch(() => {
-      history.push(`${Routes.WalletWizard}${WalletWizardPath.Welcome}`)
+      history.push(`${RoutePath.WalletWizard}${WalletWizardPath.Welcome}`)
     })
 }
 
@@ -69,7 +66,6 @@ export const addPopup = (text: string) => (dispatch: StateDispatch) => {
   setTimeout(() => {
     dispatch({
       type: AppActions.PopOut,
-      payload: null,
     })
   }, 8000)
 }
@@ -80,10 +76,36 @@ export const addNotification = (message: State.Message<ErrorCode>) => (dispatch:
     payload: message,
   })
 }
+
 export const dismissNotification = (timestamp: number) => (dispatch: StateDispatch) => {
   dispatch({
     type: AppActions.DismissNotification,
     payload: timestamp,
+  })
+}
+
+export const dismissGlobalDialog = () => (dispatch: StateDispatch) => {
+  dispatch({
+    type: AppActions.SetGlobalDialog,
+    payload: null,
+  })
+}
+
+export const showAlertDialog = (content: { title: string; message: string }) => (
+  dispatch: React.Dispatch<{ type: AppActions.UpdateAlertDialog; payload: { title: string; message: string } }>
+) => {
+  dispatch({
+    type: AppActions.UpdateAlertDialog,
+    payload: content,
+  })
+}
+
+export const dismissAlertDialog = () => (
+  dispatch: React.Dispatch<{ type: AppActions.UpdateAlertDialog; payload: null }>
+) => {
+  dispatch({
+    type: AppActions.UpdateAlertDialog,
+    payload: null,
   })
 }
 
@@ -106,14 +128,4 @@ export const toggleIsAllowedToFetchList = (allowed?: boolean) => (dispatch: Stat
     type: AppActions.ToggleIsAllowedToFetchList,
     payload: allowed,
   })
-}
-
-export default {
-  initAppState,
-  addNotification,
-  addPopup,
-  dismissNotification,
-  toggleTopAlertVisibility,
-  toggleAllNotificationVisibility,
-  toggleIsAllowedToFetchList,
 }

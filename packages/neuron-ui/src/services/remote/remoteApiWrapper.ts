@@ -1,9 +1,13 @@
-interface SuccessFromController {
-  status: 1
-  result: any
+import { ResponseCode, ErrorCode, isSuccessResponse } from 'utils'
+import { ipcRenderer } from 'electron'
+
+export interface SuccessFromController<R = any> {
+  status: ResponseCode.SUCCESS
+  result: R | null
 }
-interface FailureFromController {
-  status: 0
+
+export interface FailureFromController {
+  status: ResponseCode.FAILURE | ErrorCode.CapacityNotEnoughForChange | number
   message:
     | string
     | {
@@ -12,10 +16,10 @@ interface FailureFromController {
       }
 }
 
-export type ControllerResponse = SuccessFromController | FailureFromController
+export type ControllerResponse<R = any> = SuccessFromController<R> | FailureFromController
 
 export const RemoteNotLoadError = {
-  status: 0 as 0,
+  status: ResponseCode.FAILURE,
   message: {
     content: 'The remote module is not found, please make sure the UI is running inside the Electron App',
   },
@@ -25,9 +29,18 @@ export const RemoteNotLoadError = {
 // Action: Electron channel
 type Action =
   // App
+  | 'get-system-codehash'
   | 'load-init-data'
   | 'open-in-window'
   | 'handle-view-error'
+  | 'show-settings'
+  | 'set-locale'
+  | 'show-error-message'
+  | 'show-open-dialog'
+  | 'show-open-dialog-modal'
+  | 'open-external'
+  | 'open-context-menu'
+  | 'get-all-displays-size'
   // Wallets
   | 'get-all-wallets'
   | 'get-current-wallet'
@@ -46,17 +59,23 @@ type Action =
   | 'generate-send-all-tx'
   | 'generate-mnemonic'
   | 'validate-mnemonic'
+  | 'sign-message'
+  | 'verify-signature'
   // Transactions
   | 'get-transaction-list'
   | 'get-transaction'
   | 'show-transaction-details'
   | 'update-transaction-description'
+  | 'export-transactions'
   // Dao
   | 'get-dao-data'
   | 'generate-dao-deposit-tx'
   | 'generate-dao-deposit-all-tx'
   | 'start-withdraw-from-dao'
   | 'withdraw-from-dao'
+  // Special Assets
+  | 'get-customized-asset-cells'
+  | 'generate-withdraw-customized-cell-tx'
   // Networks
   | 'get-all-networks'
   | 'create-network'
@@ -70,18 +89,27 @@ type Action =
   | 'quit-and-install-update'
   // Settings
   | 'clear-cache'
+  // SUDT
+  | 'get-anyone-can-pay-script'
+  | 'asset-accounts'
+  | 'get-asset-account'
+  | 'send-create-asset-account-tx'
+  | 'update-asset-account'
+  | 'generate-create-asset-account-tx'
+  | 'generate-send-to-anyone-can-pay-tx'
+  | 'generate-send-all-to-anyone-can-pay-tx'
+  | 'send-to-anyone-can-pay'
+  | 'get-token-info-list'
 
-export const remoteApi = <T = any>(action: Action) => async (params: T): Promise<ControllerResponse> => {
-  const res: SuccessFromController | FailureFromController = await window.ipcRenderer
-    .invoke(action, params)
-    .catch(() => ({
-      status: 0,
-      message: {
-        content: 'Invalid response format',
-      },
-    }))
+export const remoteApi = <P = any, R = any>(action: Action) => async (params: P): Promise<ControllerResponse<R>> => {
+  const res: SuccessFromController<R> | FailureFromController = await ipcRenderer.invoke(action, params).catch(() => ({
+    status: ResponseCode.FAILURE,
+    message: {
+      content: 'Invalid response format',
+    },
+  }))
 
-  if (process.env.NODE_ENV === 'development' && window.localStorage.getItem('log-response')) {
+  if (process.env.NODE_ENV === 'development' && action === window.localStorage.getItem('log-response')) {
     console.group(action)
     console.info(`params: ${JSON.stringify(params, null, 2)}`)
     console.info(`res: ${JSON.stringify(res, null, 2)}`)
@@ -90,20 +118,20 @@ export const remoteApi = <T = any>(action: Action) => async (params: T): Promise
 
   if (!res) {
     return {
-      status: 1,
+      status: ResponseCode.SUCCESS,
       result: null,
     }
   }
 
-  if (res.status === 1) {
+  if (isSuccessResponse(res)) {
     return {
-      status: 1,
+      status: ResponseCode.SUCCESS,
       result: res.result || null,
     }
   }
 
   return {
-    status: res.status || 0,
+    status: res.status || ResponseCode.FAILURE,
     message: typeof res.message === 'string' ? { content: res.message } : res.message || '',
   }
 }

@@ -1,8 +1,8 @@
-import i18n from 'utils/i18n'
+import { t } from 'i18next'
 
 export class FailToCreateMnemonic extends Error {
   constructor() {
-    super(i18n.t('messages.failed-to-create-mnemonic'))
+    super(t('messages.failed-to-create-mnemonic'))
   }
 }
 

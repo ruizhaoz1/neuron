@@ -1,27 +1,21 @@
-import { getConnection, ObjectLiteral } from 'typeorm'
-import { pubkeyToAddress } from '@nervosnetwork/ckb-sdk-utils'
-import { Transaction, TransactionWithoutHash, TransactionStatus } from 'types/cell-types'
+import { getConnection } from 'typeorm'
+import NetworksService from 'services/networks'
 import TransactionEntity from 'database/chain/entities/transaction'
-import LockUtils from 'models/lock-utils'
-import { CONNECTION_NOT_FOUND_NAME } from 'database/chain/ormconfig'
-import NodeService from 'services/node'
+import OutputEntity from 'database/chain/entities/output'
+import Transaction, { TransactionStatus, SudtInfo } from 'models/chain/transaction'
+import InputEntity from 'database/chain/entities/input'
+import AddressParser from 'models/address-parser'
+import AssetAccountInfo from 'models/asset-account-info'
+import BufferUtils from 'utils/buffer'
+import AssetAccountEntity from 'database/chain/entities/asset-account'
+import SudtTokenInfoEntity from 'database/chain/entities/sudt-token-info'
+import exportTransactions from 'utils/export-history'
 
 export interface TransactionsByAddressesParam {
   pageNo: number
   pageSize: number
   addresses: string[]
-}
-
-export interface TransactionsByLockHashesParam {
-  pageNo: number
-  pageSize: number
-  lockHashes: string[]
-}
-
-export interface TransactionsByPubkeysParams {
-  pageNo: number
-  pageSize: number
-  pubkeys: string[]
+  walletID: string
 }
 
 export interface PaginationResult<T = any> {
@@ -33,13 +27,13 @@ export enum SearchType {
   Address = 'address',
   TxHash = 'txHash',
   Date = 'date',
-  Amount = 'amount',
   Empty = 'empty',
+  TokenInfo = 'tokenInfo',
   Unknown = 'unknown',
 }
 
 export class TransactionsService {
-  public static filterSearchType = (value: string) => {
+  public static filterSearchType(value: string) {
     if (value === '') {
       return SearchType.Empty
     }
@@ -54,213 +48,317 @@ export class TransactionsService {
       return SearchType.Date
     }
     if (value.match(/^(\d+|-\d+)$/)) {
-      return SearchType.Amount
+      // Amount search is not supported
     }
-    return SearchType.Unknown
+    return SearchType.TokenInfo
   }
 
-  // only deal with address / txHash / Date
-  private static searchSQL = async (params: TransactionsByLockHashesParam, type: SearchType, value: string = '') => {
-    const base = [
-      '(input.lockHash in (:...lockHashes) OR output.lockHash in (:...lockHashes))',
-      { lockHashes: params.lockHashes },
-    ]
-    if (type === SearchType.Empty) {
-      return base
-    }
+  public static async getAllByAddresses(params: TransactionsByAddressesParam, searchValue: string = ''): Promise<PaginationResult<Transaction>> {
+    const type: SearchType = TransactionsService.filterSearchType(searchValue)
+
+    const lockScripts = AddressParser.batchParse(params.addresses)
+    let lockHashes: string[] = lockScripts.map(s => s.computeHash())
+    const assetAccountInfo = new AssetAccountInfo()
+
+    const connection = getConnection()
+    const repository = connection.getRepository(TransactionEntity)
+
+    let allTxHashes: string[] = []
+
     if (type === SearchType.Address) {
-      const lockHashes = new LockUtils(await LockUtils.systemScript()).addressToAllLockHashes(value)
-      return ['input.lockHash IN (:...lockHashes) OR output.lockHash IN (:...lockHashes)', { lockHashes }]
-    }
-    if (type === SearchType.TxHash) {
-      return [`${base[0]} AND tx.hash = :hash`, { lockHashes: params.lockHashes, hash: value }]
-    }
-    if (type === SearchType.Date) {
-      const beginTimestamp = +new Date(value)
-      const endTimestamp = beginTimestamp + 86400000 // 24 * 60 * 60 * 1000
-      return [
-        `${
-          base[0]
-        } AND (CAST("tx"."timestamp" AS UNSIGNED BIG INT) >= :beginTimestamp AND CAST("tx"."timestamp" AS UNSIGNED BIG INT) < :endTimestamp)`,
-        {
-          lockHashes: params.lockHashes,
-          beginTimestamp,
-          endTimestamp,
-        },
-      ]
-    }
-    return base
-  }
-
-  /// TODO: Decide if this should be supported.
-  /// For now just return empty results.
-  /// The second query (one after `if (result.totalCount > 100) {` will mostly cuase `SQLITE_ERROR: too many SQL variables` error.
-  public static searchByAmount = async (_params: TransactionsByLockHashesParam, _amount: string) => {
-    return {
-      totalCount: 0,
-      items: []
-    }
-    /*
-    // 1. get all transactions
-    const result = await TransactionsService.getAll({
-      pageNo: 1,
-      pageSize: 100,
-      lockHashes: params.lockHashes,
-    })
-
-    let transactions = result.items
-    if (result.totalCount > 100) {
-      transactions = (await TransactionsService.getAll({
-        pageNo: 1,
-        pageSize: result.totalCount,
-        lockHashes: params.lockHashes,
-      })).items
-    }
-    // 2. filter by value
-    const txs = transactions.filter(tx => tx.value === amount)
-    const skip = (params.pageNo - 1) * params.pageSize
-    return {
-      totalCount: txs.length || 0,
-      items: txs.slice(skip, skip + params.pageSize),
-    }*/
-  }
-
-  public static getAll = async (
-    params: TransactionsByLockHashesParam,
-    searchValue: string = ''
-  ): Promise<PaginationResult<Transaction>> => {
-    try {
-      // if connection not found, which means no database to connect
-      // it happened when no node connected and no previous database found.
-      getConnection()
-    } catch (err) {
-      if (err.name === CONNECTION_NOT_FOUND_NAME) {
+      const lockHashToSearch = AddressParser.parse(searchValue).computeHash()
+      if (lockHashes.includes(lockHashToSearch)) {
+        lockHashes = [lockHashToSearch]
+        allTxHashes = await repository.createQueryBuilder('tx').select('tx.hash', 'txHash').where(
+          `tx.hash
+          IN
+            (
+              SELECT output.transactionHash FROM output WHERE output.lockHash in (:...lockHashes)
+              UNION
+              SELECT input.transactionHash FROM input WHERE input.lockHash in (:...lockHashes)
+            )
+          `,
+          { lockHashes }
+        )
+        .orderBy('tx.timestamp', 'DESC')
+        .getRawMany().then(txs => txs.map(tx => tx.txHash))
+      } else {
         return {
           totalCount: 0,
-          items: [],
+          items: []
         }
       }
-      throw err
+    } else if (type === SearchType.TxHash) {
+      allTxHashes = [searchValue]
+    } else if (type === SearchType.Date) {
+      const beginTimestamp = +new Date(new Date(searchValue).toDateString())
+      const endTimestamp = beginTimestamp + 86400000 // 24 * 60 * 60 * 1000
+      allTxHashes = (await repository
+        .createQueryBuilder('tx')
+        .select("tx.hash", "txHash")
+        .where(
+          `tx.hash in (
+            select output.transactionHash from output where output.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId)
+            union
+            select input.transactionHash from input where input.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId)
+          )
+          AND
+            (
+              CAST("tx"."timestamp" AS UNSIGNED BIG INT) >= :beginTimestamp AND CAST("tx"."timestamp" AS UNSIGNED BIG INT) < :endTimestamp
+            )`,
+          { walletId: params.walletID, beginTimestamp, endTimestamp }
+        )
+        .orderBy('tx.timestamp', 'DESC')
+        .getRawMany())
+        .map(tx => tx.txHash)
+    } else if (type === SearchType.TokenInfo) {
+      const assetAccount = await getConnection()
+        .getRepository(AssetAccountEntity)
+        .createQueryBuilder('aa')
+        .leftJoinAndSelect('aa.sudtTokenInfo', 'info')
+        .where(`info.symbol = :searchValue OR info.tokenName = :searchValue OR aa.accountName = :searchValue`, { searchValue })
+        .getOne()
+
+      if (!assetAccount) {
+        return {
+          totalCount: 0,
+          items: []
+        }
+      }
+
+      const tokenID = assetAccount.tokenID
+      allTxHashes = (await repository
+        .createQueryBuilder('tx')
+        .select("tx.hash", "txHash")
+        .where(
+          `tx.hash in (
+            select output.transactionHash from output
+              where
+                output.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId) AND
+                output.lockCodeHash = :lockCodeHash AND
+                output.typeArgs = :tokenID
+            union
+            select input.transactionHash from input
+              where
+                input.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId) AND
+                input.lockCodeHash = :lockCodeHash AND
+                input.typeArgs = :tokenID
+          )`,
+          {
+            walletId:
+            params.walletID,
+            lockCodeHash: assetAccountInfo.anyoneCanPayCodeHash,
+            tokenID
+          }
+        )
+        .orderBy('tx.timestamp', 'DESC')
+        .getRawMany())
+        .map(tx => tx.txHash)
+    } else {
+      allTxHashes = (
+        await repository
+          .createQueryBuilder("tx")
+          .select("tx.hash", "txHash")
+          .where(
+            `tx.hash in (
+            select output.transactionHash from output where output.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId)
+            union
+            select input.transactionHash from input where input.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId)
+          )`,
+            { walletId: params.walletID }
+          )
+          .orderBy("tx.timestamp", "DESC")
+          .getRawMany()
+      ).map(tx => tx.txHash);
     }
+
 
     const skip = (params.pageNo - 1) * params.pageSize
+    const txHashes = allTxHashes.slice(skip, skip + params.pageSize)
 
-    const type = TransactionsService.filterSearchType(searchValue)
-    if (type === SearchType.Amount) {
-      return TransactionsService.searchByAmount(params, searchValue)
-    }
-    if (type === SearchType.Unknown) {
-      return {
-        totalCount: 0,
-        items: [],
-      }
-    }
-    const searchParams = await TransactionsService.searchSQL(params, type, searchValue)
-
-    const query = getConnection()
+    const transactions = await connection
       .getRepository(TransactionEntity)
       .createQueryBuilder('tx')
-      .leftJoinAndSelect('tx.inputs', 'input')
-      .leftJoinAndSelect('tx.outputs', 'output')
-      .where(searchParams[0], searchParams[1] as ObjectLiteral)
-
-    const totalCount: number = await query.getCount()
-
-    const transactions: TransactionEntity[] = await query
+      .where('tx.hash IN (:...txHashes)', { txHashes })
       .orderBy(`tx.timestamp`, 'DESC')
-      .skip(skip)
-      .take(params.pageSize)
       .getMany()
 
-    const txs: Transaction[] = transactions!.map(tx => {
-      const outputCapacities: bigint = tx.outputs
-        .filter(o => params.lockHashes.includes(o.lockHash))
-        .map(o => BigInt(o.capacity))
-        .reduce((result, c) => result + c, BigInt(0))
-      const inputCapacities: bigint = tx.inputs
-        .filter(i => {
-          if (i.lockHash) {
-            return params.lockHashes.includes(i.lockHash)
-          }
-          return false
-        })
-        .map(i => BigInt(i.capacity || 0))
-        .reduce((result, c) => result + c, BigInt(0))
-      const value: bigint = outputCapacities - inputCapacities
-      return {
-        timestamp: tx.timestamp,
-        value: value.toString(),
-        hash: tx.hash,
-        version: tx.version,
-        type: value > BigInt(0) ? 'receive' : 'send',
-        status: tx.status,
-        description: tx.description,
-        createdAt: tx.createdAt,
-        updatedAt: tx.updatedAt,
-        blockNumber: tx.blockNumber,
+    const inputs = await connection
+      .getRepository(InputEntity)
+      .createQueryBuilder('input')
+      .select('input.capacity', 'capacity')
+      .addSelect('input.transactionHash', 'transactionHash')
+      .addSelect('input.outPointTxHash', 'outPointTxHash')
+      .addSelect('input.outPointIndex', 'outPointIndex')
+      .where(`
+        input.transactionHash IN (:...txHashes) AND
+        input.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId)
+      `, {
+        txHashes,
+        walletId: params.walletID,
+      })
+      .getRawMany()
+
+    const outputs = await connection
+      .getRepository(OutputEntity)
+      .createQueryBuilder('output')
+      .select('output.capacity', 'capacity')
+      .addSelect('output.transactionHash', 'transactionHash')
+      .addSelect('output.daoData', 'daoData')
+      .where(`
+        output.transactionHash IN (:...txHashes) AND
+        output.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId)
+      `, {
+        txHashes,
+        walletId: params.walletID,
+      })
+      .getRawMany()
+
+    const anyoneCanPayInputs = await connection
+      .getRepository(InputEntity)
+      .createQueryBuilder('input')
+      .where(`
+        input.transactionHash IN (:...txHashes) AND
+        input.typeHash IS NOT NULL AND
+        input.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId) AND
+        input.lockCodeHash = :lockCodeHash`,
+        {
+          txHashes,
+          walletId: params.walletID,
+          lockCodeHash: assetAccountInfo.anyoneCanPayCodeHash,
+        }
+      )
+      .getMany()
+
+    const anyoneCanPayOutputs = await connection
+      .getRepository(OutputEntity)
+      .createQueryBuilder('output')
+      .where(`
+        output.transactionHash IN (:...txHashes) AND
+        output.typeHash IS NOT NULL AND
+        output.lockArgs in (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId) AND
+        output.lockCodeHash = :lockCodeHash`,
+        {
+          txHashes,
+          walletId: params.walletID,
+          lockCodeHash: assetAccountInfo.anyoneCanPayCodeHash,
+        }
+      )
+      .getMany()
+
+    const inputPreviousTxHashes: string[] = inputs
+      .map(i => i.outPointTxHash)
+      .filter(h => !!h) as string[]
+
+    const daoCellOutPoints: { txHash: string, index: string }[] = (await getConnection()
+      .getRepository(OutputEntity)
+      .createQueryBuilder('output')
+      .select("output.outPointTxHash", "txHash")
+      .addSelect("output.outPointIndex", "index")
+      .where('output.daoData IS NOT NULL')
+      .getRawMany())
+      .filter(o => inputPreviousTxHashes.includes(o.txHash))
+
+    const sums = new Map<string, bigint>()
+    const daoFlag = new Map<string, boolean>()
+    outputs.map(o => {
+      const s = sums.get(o.transactionHash) || BigInt(0)
+      sums.set(o.transactionHash, s + BigInt(o.capacity))
+
+      if (o.daoData) {
+        daoFlag.set(o.transactionHash, true)
       }
     })
 
+    inputs.map(i => {
+      const s = sums.get(i.transactionHash) || BigInt(0)
+      sums.set(i.transactionHash, s - BigInt(i.capacity || 0))
+
+      const result = daoCellOutPoints.some(dc => {
+        return dc.txHash === i.outPointTxHash && dc.index === i.outPointIndex
+      })
+      if (result) {
+        daoFlag.set(i.transactionHash, true)
+      }
+    })
+
+    const txs = await Promise.all(
+      transactions.map(async tx => {
+        const value = sums.get(tx.hash!) || BigInt(0)
+
+        let typeArgs: string | undefined | null
+        const sudtInput = anyoneCanPayInputs.find(i => i.transactionHash === tx.hash && assetAccountInfo.isSudtScript(i.typeScript()!))
+        if (sudtInput) {
+          typeArgs = sudtInput.typeArgs
+        } else {
+          const sudtOutput = anyoneCanPayOutputs.find(o => o.outPointTxHash === tx.hash && assetAccountInfo.isSudtScript(o.typeScript()!))
+          if (sudtOutput) {
+            typeArgs = sudtOutput.typeArgs
+          }
+        }
+
+        let sudtInfo: SudtInfo | undefined
+
+        if (typeArgs) {
+          // const typeArgs = sudtInput.typeArgs
+          const inputAmount = anyoneCanPayInputs
+            .filter(i => i.transactionHash === tx.hash && assetAccountInfo.isSudtScript(i.typeScript()!) && i.typeArgs === typeArgs)
+            .map(i => BufferUtils.parseAmountFromSUDTData(i.data))
+            .reduce((result, c) => result + c, BigInt(0))
+          const outputAmount = anyoneCanPayOutputs
+            .filter(o => o.outPointTxHash === tx.hash && assetAccountInfo.isSudtScript(o.typeScript()!) && o.typeArgs === typeArgs)
+            .map(o => BufferUtils.parseAmountFromSUDTData(o.data))
+            .reduce((result, c) => result + c, BigInt(0))
+
+          const amount = outputAmount - inputAmount
+          const tokenInfo = await getConnection()
+            .getRepository(SudtTokenInfoEntity)
+            .createQueryBuilder('info')
+            .leftJoinAndSelect('info.assetAccounts', 'aa')
+            .where(`info.tokenID = :typeArgs AND aa.blake160 IN (select publicKeyInBlake160 from hd_public_key_info where walletId = :walletId)`, {
+              typeArgs,
+              walletId: params.walletID,
+            })
+            .getOne()
+
+          if (tokenInfo) {
+            sudtInfo = {
+              sUDT: tokenInfo,
+              amount: amount.toString(),
+            }
+          }
+        }
+
+        return Transaction.fromObject({
+          timestamp: tx.timestamp,
+          value: value.toString(),
+          hash: tx.hash,
+          version: tx.version,
+          type: value > BigInt(0) ? 'receive' : 'send',
+          nervosDao: daoFlag.get(tx.hash!),
+          status: tx.status,
+          description: tx.description,
+          createdAt: tx.createdAt,
+          updatedAt: tx.updatedAt,
+          blockNumber: tx.blockNumber,
+          sudtInfo: sudtInfo,
+        })
+      })
+    )
+
+    const totalCount: number = SearchType.TxHash === type ? txs.length : allTxHashes.length
+
     return {
-      totalCount: totalCount || 0,
+      totalCount,
       items: txs,
     }
   }
 
-  public static getAllByAddresses = async (
-    params: TransactionsByAddressesParam,
-    searchValue: string = ''
-  ): Promise<PaginationResult<Transaction>> => {
-    const lockHashes: string[] = new LockUtils(await LockUtils.systemScript())
-      .addressesToAllLockHashes(params.addresses)
-
-    return TransactionsService.getAll(
-      {
-        pageNo: params.pageNo,
-        pageSize: params.pageSize,
-        lockHashes,
-      },
-      searchValue
-    )
-  }
-
-  public static getAllByPubkeys = async (
-    params: TransactionsByPubkeysParams,
-    searchValue: string = ''
-  ): Promise<PaginationResult<Transaction>> => {
-    const addresses: string[] = params.pubkeys.map(pubkey => {
-      const addr = pubkeyToAddress(pubkey)
-      return addr
-    })
-
-    const lockHashes = new LockUtils(await LockUtils.systemScript()).addressesToAllLockHashes(addresses)
-
-    return TransactionsService.getAll(
-      {
-        pageNo: params.pageNo,
-        pageSize: params.pageSize,
-        lockHashes,
-      },
-      searchValue
-    )
-  }
-
-  public static get = async (hash: string): Promise<Transaction | undefined> => {
-    try {
-      // if connection not found, may means no database to connect
-      // it happened when no node connected and no previous database found.
-      getConnection()
-    } catch (err) {
-      if (err.name === CONNECTION_NOT_FOUND_NAME) {
-        return undefined
-      }
-      throw err
-    }
-
+  public static async get(hash: string): Promise<Transaction | undefined> {
     const tx = await getConnection()
       .getRepository(TransactionEntity)
       .createQueryBuilder('transaction')
-      .where('transaction.hash is :hash', {hash})
+      .where('transaction.hash is :hash', { hash })
       .leftJoinAndSelect('transaction.inputs', 'input')
       .leftJoinAndSelect('transaction.outputs', 'output')
       .orderBy({
@@ -272,12 +370,10 @@ export class TransactionsService {
       return undefined
     }
 
-    const transaction: Transaction = tx.toInterface()
-
-    return transaction
+    return tx.toModel()
   }
 
-  public static blake160sOfTx = (tx: TransactionWithoutHash | Transaction) => {
+  public static blake160sOfTx(tx: Transaction) {
     let inputBlake160s: string[] = []
     let outputBlake160s: string[] = []
     if (tx.inputs) {
@@ -292,35 +388,94 @@ export class TransactionsService {
   }
 
   // tx count with one lockHash and status
-  public static getCountByLockHashesAndStatus = async (
-    lockHashes: string[],
-    status: TransactionStatus[]
-  ): Promise<number> => {
-    const count: number = await getConnection()
+  public static async getCountByLockHashesAndStatus(lockHashes: Set<string>, status: Set<TransactionStatus>) {
+    const [sql, parameters] = getConnection().driver.escapeQueryWithParameters(`select lockHash, count(DISTINCT(transactionHash)) as cnt from (select lockHash, transactionHash from input union select lockHash, transactionHash from output) as cell left join (select tx.hash from 'transaction' as tx where tx.status in (:...status) AND tx.hash in (select transactionHash from input union select transactionHash from output)) as result on cell.transactionHash = result.hash where lockHash in (:...lockHashes) group by lockHash;`, { status: [...status], lockHashes: [...lockHashes] }, {})
+
+    const count: { lockHash: string, cnt: number }[] = await getConnection().manager.query(sql, parameters)
+
+    const result = new Map<string, number>()
+    count.forEach(c => {
+      result.set(c.lockHash, c.cnt)
+    })
+
+    return result
+
+  }
+
+  public static async getTxCountsByWalletId(walletId: string) {
+    const [sql, parameters] = getConnection()
+      .driver
+      .escapeQueryWithParameters(`
+        SELECT
+          lockArgs,
+          count(DISTINCT (transactionHash)) AS cnt
+        FROM (
+          SELECT
+            lockArgs,
+            transactionHash
+          FROM
+            input
+          WHERE
+            lockArgs in(
+              SELECT
+                hd_public_key_info.publicKeyInBlake160 FROM hd_public_key_info
+              WHERE
+                walletId = :walletId
+            )
+          UNION
+          SELECT
+            lockArgs,
+            transactionHash
+          FROM
+            output
+          WHERE
+            lockArgs in(
+              SELECT
+                hd_public_key_info.publicKeyInBlake160 FROM hd_public_key_info
+              WHERE
+                walletId = :walletId
+            )
+        ) AS cell
+        GROUP BY
+          lockArgs;
+        `,
+        {
+          walletId
+        },
+        {}
+      )
+
+    const count: { lockArgs: string, cnt: number }[] = await getConnection().manager.query(sql, parameters)
+
+    const result = new Map<string, number>()
+    count.forEach(c => {
+      result.set(c.lockArgs, c.cnt)
+    })
+
+    return result
+  }
+
+  public static async checkNonExistTransactionsByHashes(hashes: string[]) {
+    const results = await getConnection()
       .getRepository(TransactionEntity)
       .createQueryBuilder('tx')
-      .where(
-        `tx.hash in (select output.transactionHash from output where output.lockHash in (:...lockHashes) union select input.transactionHash from input where input.lockHash in (:...lockHashes)) AND tx.status IN (:...status)`,
-        {
-          lockHashes,
-          status,
-        }
-      )
-      .getCount()
+      .select("tx.hash", "hash")
+      .where('tx.hash IN (:...hashes)', { hashes })
+      .getRawMany()
 
-    return count
+    const existHashesSet = new Set(results.map(result => result.hash))
+    const nonExistHashes: string[] = []
+
+    for (const hash of hashes) {
+      if (!existHashesSet.has(hash)) {
+        nonExistHashes.push(hash)
+      }
+    }
+
+    return nonExistHashes
   }
 
-  public static getCountByAddressAndStatus = async (
-    address: string,
-    status: TransactionStatus[],
-    url: string = NodeService.getInstance().core.rpc.node.url
-  ): Promise<number> => {
-    const lockHashes: string[] = new LockUtils(await LockUtils.systemScript(url)).addressToAllLockHashes(address)
-    return TransactionsService.getCountByLockHashesAndStatus(lockHashes, status)
-  }
-
-  public static updateDescription = async (hash: string, description: string) => {
+  public static async updateDescription(hash: string, description: string) {
     const transactionEntity = await getConnection()
       .getRepository(TransactionEntity)
       .createQueryBuilder('tx')
@@ -334,6 +489,12 @@ export class TransactionsService {
     }
     transactionEntity.description = description
     return getConnection().manager.save(transactionEntity)
+  }
+
+  public static async exportTransactions({ walletID, filePath }: { walletID: string, filePath: string }) {
+    const chainType = NetworksService.getInstance().getCurrent().chain
+    const total = await exportTransactions({ walletID, filePath, chainType })
+    return total
   }
 }
 

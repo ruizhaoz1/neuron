@@ -1,0 +1,61 @@
+@import '../../styles/mixin.scss';
+
+.button {
+  @include medium-text;
+  appearance: none;
+  min-width: 5.125rem;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 500;
+  padding: 7px 7px;
+  border: none;
+  border-radius: 2px;
+  margin: 0;
+  box-sizing: border-box;
+  border-radius: 2px;
+
+  &[data-type='default'],
+  &[data-type='reset'] {
+    background-color: #fff;
+    color: #000;
+    border: 1px solid #000;
+
+    &:hover {
+      @include semi-bold-text;
+    }
+  }
+
+  &[data-type='cancel'] {
+    background-color: #e3e3e3;
+    color: #000;
+
+    &:hover {
+      @include semi-bold-text;
+      background-color: #d1d1d1;
+    }
+  }
+
+  &[data-type='primary'],
+  &[data-type='ok'],
+  &[data-type='submit'],
+  &[data-type='confirm'] {
+    background-color: var(--nervos-green);
+    color: #fff;
+
+    &:hover {
+      @include semi-bold-text;
+      background-color: #21b574;
+    }
+  }
+
+  &:active {
+    @include semi-bold-text;
+    filter: invert(0.2);
+  }
+
+  &[disabled] {
+    opacity: 0.5;
+    box-shadow: none !important;
+    pointer-events: none;
+  }
+}

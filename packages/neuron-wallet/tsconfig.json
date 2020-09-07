@@ -5,13 +5,18 @@
     "sourceMap": true,
     "declaration": true,
     "emitDecoratorMetadata": true,
+    "incremental": true,
     "outDir": "dist",
     "baseUrl": ".",
     "paths": {
       "*": ["./src/*", "node_modules/*"]
     },
     "plugins": [
-      { "transform": "ts-transformer-imports" }
+      { "transform": "@zerollup/ts-transform-paths" }
+    ],
+    "lib": [
+      "es2019",
+      "dom"
     ]
   },
   "include": ["src/**/*"]

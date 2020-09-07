@@ -1,40 +1,20 @@
-import BlockNumber from 'services/sync/block-number'
-import { createSyncBlockTask, killSyncBlockTask } from 'startup/sync-block-task'
+import SyncedBlockNumber from 'models/synced-block-number'
+import { createBlockSyncTask, killBlockSyncTask } from 'block-sync-renderer'
 import ChainCleaner from 'database/chain/cleaner'
 import { ResponseCode } from 'utils/const'
 
 export default class SyncController {
-  public static startSyncing() {
-    createSyncBlockTask()
-
+  public async clearCache(clearIndexerFolder: boolean = false) {
+    await this.doClearTask(clearIndexerFolder)
     return {
       status: ResponseCode.Success,
       result: true
     }
   }
 
-  public static async stopSyncing() {
-    await killSyncBlockTask()
-
-    return {
-      status: ResponseCode.Success,
-      result: true
-    }
-  }
-
-  public static async clearCache() {
-    return new Promise(resolve => {
-      SyncController.stopSyncing().finally(() => {
-        ChainCleaner.clean().finally(() => {
-          return resolve(this.startSyncing())
-        })
-      })
-    })
-  }
-
-  public static async currentBlockNumber() {
-    const blockNumber = new BlockNumber()
-    const current: bigint = await blockNumber.getCurrent()
+  public async currentBlockNumber() {
+    const blockNumber = new SyncedBlockNumber()
+    const current: bigint = await blockNumber.getNextBlock()
 
     return {
       status: ResponseCode.Success,
@@ -42,5 +22,11 @@ export default class SyncController {
         currentBlockNumber: current.toString(),
       },
     }
+  }
+
+  private doClearTask = async (clearIndexerFolder: boolean) => {
+    await killBlockSyncTask()
+    await ChainCleaner.clean()
+    await createBlockSyncTask(clearIndexerFolder)
   }
 }

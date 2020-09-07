@@ -18,10 +18,12 @@ export default {
         'create-new': 'Create New Wallet',
         import: 'Import Wallet',
         backup: 'Backup Current Wallet',
+        'export-xpubkey': 'Export Extended Public Key',
         delete: 'Delete Current Wallet',
         'change-password': 'Change Password',
         'import-mnemonic': 'Import Wallet Seed',
         'import-keystore': 'Import from Keystore',
+        'import-xpubkey': 'Import Extended Public Key',
       },
       edit: {
         label: 'Edit',
@@ -29,6 +31,10 @@ export default {
         copy: 'Copy',
         paste: 'Paste',
         selectall: 'Select All',
+      },
+      tools: {
+        label: "Tools",
+        "sign-and-verify": "Sign/Verify Message",
       },
       window: {
         label: 'Window',
@@ -40,7 +46,9 @@ export default {
         'nervos-website': 'Nervos Website',
         'source-code': 'Source Code',
         'report-issue': 'Report Issue',
+        documentation: 'Documentation',
         settings: 'Settings',
+        'export-debug-info': 'Export Debug Information'
       },
       develop: {
         develop: 'Develop',
@@ -54,48 +62,47 @@ export default {
       wallets: 'Wallets',
     },
     messages: {
-      'failed-to-load-networks': 'Failed to load networks',
-      'Networks-will-be-reset': 'Networks will be reset',
-      'wallet-password-less-than-min-length': 'Password must be at least {{minPasswordLength}} characters',
-      'wallet-password-more-than-max-length': 'Password up to {{maxPasswordLength}} characters',
+      'failed-to-load-networks': 'Failed to load networks.',
+      'Networks-will-be-reset': 'Networks will be reset.',
+      'wallet-password-less-than-min-length': 'Password must be at least {{minPasswordLength}} characters.',
+      'wallet-password-more-than-max-length': 'Password up to {{maxPasswordLength}} characters.',
       'wallet-password-letter-complexity':
         'Password must contain a combination of uppercase and lowercase letters, numbers and special symbols.',
-      'current-wallet-not-set': 'Current wallet is not set',
-      'incorrect-password': 'Password is incorrect',
-      'current-key-has-no-data': 'Current Key has no data',
-      'invalid-address': 'Address {{address}} is invalid',
-      'codehash-not-loaded': 'codehash is not loaded',
-      'wallet-not-found': 'Wallet {{id}} not found',
-      'no-current-wallet': 'No current wallet',
-      'wallet-incorrect-password': 'Incorrect password',
-      'failed-to-create-mnemonic': 'Failed to create mnemonic',
-      'failed-to-activate-wallet': 'Failed to activate wallet',
-      'failed-to-delete-wallet': 'Failed to delete wallet',
-      'network-not-found': 'Network of ID {{id}} is not found',
-      'invalid-name': '{{field}} name is invalid',
-      'default-network-unremovable': 'Default network is unremovable',
-      'lack-of-default-network': 'Lack of default network',
-      'current-network-not-set': 'Current network is not set',
-      'transaction-not-found': 'Transaction {{hash}} is not found',
-      'service-not-respond': '{{service}} service not respond',
-      'parameters-of-sending-transactions-are-required': 'Parameters of sending transactions are required',
-      'is-required': '{{field}} is required',
-      'invalid-format': '{{field}} is in invalid format',
-      'used-name': '{{field}} name is used',
-      'missing-required-argument': 'Missing required argument',
-      'save-keystore': 'Save Keystore',
-      'invalid-mnemonic': 'Wallet seed is invalid',
-      'unsupported-cipher': 'Unsupported cipher',
-      'capacity-not-enough': 'Capacity is not enough',
-      'capacity-not-enough-for-change': 'Capacity not enough for change',
-      'capacity-too-small': 'Capacity less than min',
-      'should-be-type-of': '{{field}} should be type of {{type}}',
-      'invalid-keystore': 'Keystore is invalid',
-      'invalid-json': 'Invalid JSON file',
-      'cell-is-not-yet-live': 'Cell is not yet live!',
-      'transaction-is-not-committed-yet': 'Transaction is not committed yet!',
-      'mainnet-address-required': '{{address}} is not a mainnet address',
-      'testnet-address-required': '{{address}} is not a testnet address'
+      'current-wallet-not-set': 'Current wallet is not set.',
+      'incorrect-password': 'Password is incorrect.',
+      'invalid-address': 'Address {{address}} is invalid.',
+      'codehash-not-loaded': 'codehash is not loaded.',
+      'wallet-not-found': 'Wallet {{id}} not found.',
+      'failed-to-create-mnemonic': 'Failed to create mnemonic.',
+      'network-not-found': 'Network of ID {{id}} is not found.',
+      'invalid-name': '{{field}} name is invalid.',
+      'default-network-unremovable': 'Default network is unremovable.',
+      'lack-of-default-network': 'Lack of default network.',
+      'current-network-not-set': 'Current CKB node RPC has not been set.',
+      'transaction-not-found': 'Transaction {{hash}} is not found.',
+      'is-required': '{{field}} is required.',
+      'invalid-format': '{{field}} is in invalid format.',
+      'used-name': '{{field}} name is used, please choose another one.',
+      'missing-required-argument': 'Missing required argument.',
+      'save-keystore': 'Save Keystore.',
+      'save-extended-public-key': 'Save Extended Public Key.',
+      'import-extended-public-key': 'Import Extended Public Key.',
+      'invalid-mnemonic': 'Wallet seed is invalid, please check it again.',
+      'unsupported-cipher': 'Unsupported cipher.',
+      'capacity-not-enough': 'Insufficient balance.',
+      'capacity-not-enough-for-change': "You need more capacities for change (at least 61 CKBytes), or click 'Max' button to send all your balance.",
+      'live-capacity-not-enough': 'Insufficient available balance, please try again when last transaction has been confirmed.',
+      'capacity-too-small': 'The minimal transfer balance is {{bytes}} CKBytes.',
+      'should-be-type-of': '{{field}} should be type of {{type}}.',
+      'invalid-keystore': 'Keystore is invalid, please check your file integrity.',
+      'invalid-json': 'Invalid JSON file, please check your file integrity.',
+      'cell-is-not-yet-live': 'Please wait until last transaction is confirmed by chain.',
+      'transaction-is-not-committed-yet': 'Cannot find required cells on chain, please make sure the related transactions has been confirmed.',
+      'mainnet-address-required': '{{address}} is not a mainnet address.',
+      'testnet-address-required': '{{address}} is not a testnet address.',
+      'address-not-found': 'The given address does not belong to current wallet. Please check your wallet or wait for synchronizing complete.',
+      'target-output-not-found': "There isn't an account wallet associated with this address.",
+      'acp-same-account': "The payment account and receive account shouldn't be the same."
     },
     messageBox: {
       button: {
@@ -121,6 +128,18 @@ export default {
       transaction: {
         title: 'Transaction: {{hash}}',
       },
+      'sign-and-verify': {
+        title: 'Sign/verify message'
+      },
+      'ckb-dependency': {
+        title: 'Bundled CKB Node',
+        message: 'Dependency Required',
+        detail: `The embedded CKB node in Neuron requires Microsoft Visual C++ Redistributable component to be installed to work properly. You have to install it to enable the internal node. If you'd like to use a remote CKB node, you can skip this step.`,
+        buttons: {
+          'skip': 'Skip',
+          'install-and-exit': 'Install and Exit'
+        }
+      },
     },
     prompt: {
       password: {
@@ -136,6 +155,38 @@ export default {
       yes: 'Yes',
       no: 'No',
       ok: 'OK',
+      error: 'Error',
     },
+    'export-debug-info': {
+      'export-debug-info': 'Export Debug Information',
+      'debug-info-exported': 'Debug information has been exported to {{ file }}'
+    },
+    about: {
+      "app-version": "{{name}} Version: {{version}}",
+      "ckb-client-version": "CKB Client Version: {{version}}"
+    },
+    settings: {
+      title: {
+        normal: 'Settings',
+        mac: 'Preference'
+      }
+    },
+    'export-transactions': {
+      'export-transactions': 'Export Transaction History',
+      'transactions-exported': '{{total}} transaction records have been exported to {{file}}',
+      column: {
+        "time": "Time",
+        "block-number": "Block Number",
+        "tx-hash": "Transaction Hash",
+        "tx-type": "Transaction Type",
+        "amount": "CKB Amount",
+        "udt-amount": "UDT Amount",
+        "description": "Description"
+      },
+      "tx-type": {
+        "send": "Send",
+        "receive": "Receive"
+      }
+    }
   },
 }

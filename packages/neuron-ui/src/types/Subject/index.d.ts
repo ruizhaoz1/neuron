@@ -7,14 +7,11 @@ interface NeuronWalletSubject<T = any> {
 }
 
 declare namespace Command {
-  type Type = 'nav' | 'delete-wallet' | 'backup-wallet'
+  type Type = 'navigate-to-url' | 'delete-wallet' | 'backup-wallet'
   type Payload = string | null
 }
 
 declare namespace Subject {
-  interface SystemScript {
-    codeHash: string
-  }
   interface DataUpdateMetaInfo {
     walletID?: string
     dataType: 'address' | 'transaction' | 'current-wallet' | 'wallets' | 'network'
@@ -27,7 +24,7 @@ declare namespace Subject {
     type: Command.Type
     payload: Command.Payload
   }
-  type ConnectionStatus = boolean
+  type ConnectionStatus = { url: string; connected: boolean }
   type BlockNumber = string
   interface AppUpdater {
     checking: boolean
@@ -35,4 +32,5 @@ declare namespace Subject {
     version: string
     releaseNotes: string
   }
+  type URL = string
 }

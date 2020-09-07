@@ -1,26 +1,62 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
+import { useHistory, useRouteMatch } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import {
-  Stack,
-  Icon,
-  Text,
-  Label,
-  Image,
-  PrimaryButton,
-  DefaultButton,
-  TextField,
-  FontSizes,
-  Spinner,
-} from 'office-ui-fabric-react'
+import { Stack, Icon, Text, TextField, FontSizes } from 'office-ui-fabric-react'
+import Button from 'widgets/Button'
+import CustomTextField from 'widgets/TextField'
+import Spinner from 'widgets/Spinner'
 
 import withWizard, { WizardElementProps, WithWizardState } from 'components/withWizard'
-import { generateMnemonic, validateMnemonic, showErrorMessage } from 'services/remote'
-import { createWalletWithMnemonic, importWalletWithMnemonic } from 'states/stateProvider/actionCreators'
+import { createWallet, importMnemonic, generateMnemonic, validateMnemonic, showErrorMessage } from 'services/remote'
 
-import { Routes, MnemonicAction, ErrorCode, MAX_WALLET_NAME_LENGTH } from 'utils/const'
+import {
+  generateWalletName,
+  RoutePath,
+  MnemonicAction,
+  ErrorCode,
+  CONSTANTS,
+  isSuccessResponse,
+  validatePasswordComplexity,
+} from 'utils'
 import { buttonGrommetIconStyles } from 'utils/icons'
-import { verifyPasswordComplexity } from 'utils/validators'
-import generateWalletName from 'utils/generateWalletName'
+import i18n from 'utils/i18n'
+import styles from './walletWizard.module.scss'
+
+const { MAX_WALLET_NAME_LENGTH, MAX_PASSWORD_LENGTH } = CONSTANTS
+
+const createWalletWithMnemonic = (params: Controller.ImportMnemonicParams) => (
+  history: ReturnType<typeof useHistory>
+) => {
+  return createWallet(params).then(res => {
+    if (isSuccessResponse(res)) {
+      history.push(window.neuron.role === 'main' ? RoutePath.Overview : RoutePath.SettingsWallets)
+    } else if (res.status > 0) {
+      showErrorMessage(i18n.t(`messages.error`), i18n.t(`messages.codes.${res.status}`))
+    } else if (res.message) {
+      const msg = typeof res.message === 'string' ? res.message : res.message.content || ''
+      if (msg) {
+        showErrorMessage(i18n.t(`messages.error`), msg)
+      }
+    }
+  })
+}
+
+const importWalletWithMnemonic = (params: Controller.ImportMnemonicParams) => (
+  history: ReturnType<typeof useHistory>
+) => {
+  return importMnemonic(params).then(res => {
+    if (isSuccessResponse(res)) {
+      history.push(window.neuron.role === 'main' ? RoutePath.Overview : RoutePath.SettingsWallets)
+    } else if (res.status > 0) {
+      showErrorMessage(i18n.t(`messages.error`), i18n.t(`messages.codes.${res.status}`))
+    } else if (res.message) {
+      const msg = typeof res.message === 'string' ? res.message : res.message.content || ''
+      if (msg) {
+        showErrorMessage(i18n.t(`messages.error`), msg)
+      }
+    }
+  })
+}
 
 export enum WalletWizardPath {
   Welcome = '/welcome',
@@ -60,11 +96,12 @@ const submissionInputs = [
   },
 ]
 
-const Welcome = ({ rootPath = '/wizard', wallets = [], history }: WizardElementProps<{ rootPath: string }>) => {
+const Welcome = ({ rootPath = '/wizard', wallets = [] }: WizardElementProps) => {
   const [t] = useTranslation()
+  const history = useHistory()
   useEffect(() => {
     if (wallets.length) {
-      history.push(Routes.Overview)
+      history.push(RoutePath.Overview)
     }
   }, [wallets, history])
 
@@ -76,53 +113,51 @@ const Welcome = ({ rootPath = '/wizard', wallets = [], history }: WizardElementP
   )
 
   return (
-    <Stack verticalFill verticalAlign="center" horizontalAlign="center" tokens={{ childrenGap: 50 }}>
-      <Stack.Item>
-        <Image src={`${process.env.PUBLIC_URL}/icon.png`} width="120px" />
-      </Stack.Item>
-
-      <Stack.Item>
-        <Text variant="xLargePlus">{t('wizard.welcome-to-nervos-neuron')}</Text>
-      </Stack.Item>
-
-      <Stack horizontal horizontalAlign="center" verticalAlign="center" tokens={{ childrenGap: 40 }}>
-        <PrimaryButton
-          styles={{ root: [{ height: '60px' }] }}
-          text={t('wizard.import-mnemonic')}
+    <div className={styles.welcome}>
+      <img src={`${process.env.PUBLIC_URL}/icon.png`} width="120px" className={styles.logo} alt="logo" />
+      <span className={styles.slogan}>{t('wizard.welcome-to-nervos-neuron')}</span>
+      <div className={styles.actions}>
+        <Button
+          type="primary"
+          label={t('wizard.import-mnemonic')}
           onClick={next(`${rootPath}${WalletWizardPath.Mnemonic}/${MnemonicAction.Import}`)}
-          iconProps={{ iconName: 'Import', styles: buttonGrommetIconStyles }}
-        />
+        >
+          <>
+            <Icon iconName="Import" styles={buttonGrommetIconStyles} />
+            {t('wizard.import-mnemonic')}
+          </>
+        </Button>
         <span>{t('common.or')}</span>
-        <PrimaryButton
-          styles={{ root: [{ height: '60px' }] }}
-          text={t('wizard.import-keystore')}
-          onClick={next(Routes.ImportKeystore)}
-          iconProps={{ iconName: 'Keystore', styles: buttonGrommetIconStyles }}
-        />
+        <Button type="primary" label={t('wizard.import-keystore')} onClick={next(RoutePath.ImportKeystore)}>
+          <>
+            <Icon iconName="Keystore" styles={buttonGrommetIconStyles} />
+            {t('wizard.import-keystore')}
+          </>
+        </Button>
         <span>{t('common.or')}</span>
-        <DefaultButton
-          styles={{ root: [{ height: '60px' }] }}
-          text={t('wizard.create-new-wallet')}
+        <Button
+          type="default"
+          label={t('wizard.create-new-wallet')}
           onClick={next(`${rootPath}${WalletWizardPath.Mnemonic}/${MnemonicAction.Create}`)}
-          iconProps={{ iconName: 'Create', styles: buttonGrommetIconStyles }}
-        />
-      </Stack>
-    </Stack>
+        >
+          <>
+            <Icon iconName="Create" styles={buttonGrommetIconStyles} />
+            {t('wizard.create-new-wallet')}
+          </>
+        </Button>
+      </div>
+    </div>
   )
 }
 
 Welcome.displayName = 'Welcome'
 
-const Mnemonic = ({
-  state = initState,
-  rootPath = '/wizard',
-  match: {
-    params: { type = MnemonicAction.Create },
-  },
-  history,
-  dispatch,
-}: WizardElementProps<{ type: string }>) => {
+const Mnemonic = ({ state = initState, rootPath = '/wizard', dispatch }: WizardElementProps) => {
   const { generated, imported } = state
+  const history = useHistory()
+  const {
+    params: { type = MnemonicAction.Create },
+  } = useRouteMatch<{ type: MnemonicAction }>()
   const [t] = useTranslation()
   const isCreate = type === MnemonicAction.Create
   const message = isCreate ? 'wizard.your-wallet-seed-is' : 'wizard.input-your-seed'
@@ -133,8 +168,7 @@ const Mnemonic = ({
   useEffect(() => {
     if (type === MnemonicAction.Create) {
       generateMnemonic().then(res => {
-        // Should always succeed
-        if (res.status === 1) {
+        if (isSuccessResponse(res)) {
           dispatch({
             type: 'generated',
             payload: res.result,
@@ -161,6 +195,9 @@ const Mnemonic = ({
     [dispatch]
   )
   const onNext = useCallback(() => {
+    if (disableNext) {
+      return
+    }
     if (isCreate) {
       history.push(`${rootPath}${WalletWizardPath.Mnemonic}/${MnemonicAction.Verify}`)
     } else {
@@ -171,7 +208,7 @@ const Mnemonic = ({
       })
       validateMnemonic(trimmedMnemonic).then(res => {
         let isMnemonicValid = false
-        if (res.status === 1) {
+        if (isSuccessResponse(res)) {
           isMnemonicValid = res.result
         }
         if (isMnemonicValid) {
@@ -188,10 +225,21 @@ const Mnemonic = ({
         }
       })
     }
-  }, [isCreate, history, rootPath, type, imported, t, dispatch])
+  }, [isCreate, history, rootPath, type, imported, t, dispatch, disableNext])
+
+  const onKeyPress = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Enter') {
+        e.stopPropagation()
+        e.preventDefault()
+        onNext()
+      }
+    },
+    [onNext]
+  )
 
   return (
-    <Stack verticalFill verticalAlign="center" horizontalAlign="stretch" tokens={{ childrenGap: 15 }}>
+    <div className={styles.mnemonic}>
       <Text variant="xLargePlus">{t(message)}</Text>
       <TextField
         autoFocus
@@ -201,6 +249,7 @@ const Mnemonic = ({
         readOnly={isCreate}
         value={isCreate ? generated : imported}
         onChange={onChange}
+        onKeyPress={onKeyPress}
         description={t(hint)}
         styles={{
           field: {
@@ -214,29 +263,36 @@ const Mnemonic = ({
           },
         }}
       />
-      <Stack horizontal horizontalAlign="end" tokens={{ childrenGap: 10 }}>
-        <DefaultButton onClick={history.goBack} text={t('wizard.back')} />
-        <PrimaryButton type="submit" onClick={onNext} disabled={disableNext} text={t('wizard.next')} />
-      </Stack>
-    </Stack>
+      <div className={styles.actions}>
+        <Button type="cancel" label={t('wizard.back')} onClick={history.goBack} />
+        <Button type="submit" label={t('wizard.next')} onClick={onNext} disabled={disableNext} />
+      </div>
+    </div>
   )
 }
 
 Mnemonic.displayName = 'Mnemonic'
 
-const Submission = ({
-  state = initState,
-  wallets = [],
-  match: {
-    params: { type = MnemonicAction.Create },
-  },
-  history,
-  dispatch,
-}: WizardElementProps<{ type: string }>) => {
+const Submission = ({ state = initState, wallets = [], dispatch }: WizardElementProps) => {
   const { name, password, confirmPassword, imported } = state
+  const history = useHistory()
+  const {
+    params: { type = MnemonicAction.Create },
+  } = useRouteMatch<{ type: MnemonicAction }>()
   const [t] = useTranslation()
   const [loading, setLoading] = useState(false)
   const message = 'wizard.set-wallet-name-and-password'
+
+  const isNameUnused = useMemo(() => name && !wallets.find(w => w.name === name), [name, wallets])
+  const isPwdComplex = useMemo(() => {
+    try {
+      return validatePasswordComplexity(password)
+    } catch {
+      return false
+    }
+  }, [password])
+  const isPwdSame = useMemo(() => password && password === confirmPassword, [password, confirmPassword])
+  const disableNext = !(isNameUnused && isPwdComplex && isPwdSame) || loading
 
   useEffect(() => {
     if (loading) {
@@ -257,59 +313,65 @@ const Submission = ({
   }, [loading, dispatch, wallets, t])
 
   const onChange = useCallback(
-    (e: any, value?: string) => {
-      const { field } = e.target.dataset
-      if (undefined !== value) {
-        if (['password', 'confirmPassword'].includes(field) && /\s/.test(value)) {
-          return
-        }
-        dispatch({
-          type: field,
-          payload: value,
-        })
-      }
+    (e: React.SyntheticEvent<HTMLInputElement>) => {
+      const {
+        value,
+        dataset: { field = '' },
+      } = e.target as HTMLInputElement
+      dispatch({
+        type: field,
+        payload: value,
+      })
     },
     [dispatch]
   )
 
-  const onNext = useCallback(() => {
-    if (loading) {
-      return
-    }
-    const p = {
-      name,
-      password,
-      mnemonic: imported,
-    }
-    setLoading(true)
-    setTimeout(() => {
-      if (type === MnemonicAction.Create) {
-        createWalletWithMnemonic(p)(dispatch, history).finally(() => setLoading(false))
-      } else {
-        importWalletWithMnemonic(p)(dispatch, history).finally(() => setLoading(false))
+  const onNext = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault()
+      if (disableNext) {
+        return
       }
-    }, 0)
-  }, [type, name, password, imported, history, dispatch, loading])
-
-  const isNameUnused = useMemo(() => name && !wallets.find(w => w.name === name), [name, wallets])
-  const isPwdComplex = useMemo(() => verifyPasswordComplexity(password) === true, [password])
-  const isPwdSame = useMemo(() => password && password === confirmPassword, [password, confirmPassword])
-  const disableNext = !(isNameUnused && isPwdComplex && isPwdSame)
+      const p = {
+        name,
+        password,
+        mnemonic: imported,
+      }
+      setLoading(true)
+      setTimeout(() => {
+        if (type === MnemonicAction.Create) {
+          createWalletWithMnemonic(p)(history).finally(() => setLoading(false))
+        } else {
+          importWalletWithMnemonic(p)(history).finally(() => setLoading(false))
+        }
+      }, 0)
+    },
+    [type, name, password, imported, history, disableNext]
+  )
 
   return (
-    <Stack verticalFill verticalAlign="center" horizontalAlign="stretch" tokens={{ childrenGap: 15 }}>
-      <Text variant="xxLargePlus">{t(message)}</Text>
+    <form onSubmit={onNext} className={styles.submission}>
+      <Text variant="xxLargePlus" styles={{ root: { paddingBottom: '20px' } }}>
+        {t(message)}
+      </Text>
       {submissionInputs.map(input => (
-        <div key={input.key}>
-          <Label required>{t(`wizard.${input.label}`)}</Label>
-          <TextField
-            data-field={input.key}
+        <div
+          key={input.key}
+          className={styles.input}
+          data-chars={input.type === 'password' ? `${state[input.key].length}/${MAX_PASSWORD_LENGTH}` : ''}
+        >
+          <CustomTextField
+            label={t(`wizard.${input.label}`)}
+            field={input.key}
             autoFocus={input.autoFocus}
-            type={input.type}
+            type={input.type as 'password' | 'text'}
             value={state[input.key]}
             onChange={onChange}
-            description={t(input.hint || '')}
             maxLength={input.maxLength}
+            hint={input.hint ? t(input.hint) : undefined}
+            suffix={input.type === 'password' ? `${state[input.key].length}/${MAX_PASSWORD_LENGTH}` : undefined}
+            className={styles.submissionField}
+            required
           />
         </div>
       ))}
@@ -329,17 +391,13 @@ const Submission = ({
         </Stack>
       </Stack>
 
-      <Stack horizontal horizontalAlign="end" tokens={{ childrenGap: 10 }}>
-        <DefaultButton onClick={history.goBack} text={t('wizard.back')} />
-        {loading ? (
-          <PrimaryButton disabled>
-            <Spinner />
-          </PrimaryButton>
-        ) : (
-          <PrimaryButton type="submit" onClick={onNext} disabled={disableNext} text={t('wizard.next')} />
-        )}
-      </Stack>
-    </Stack>
+      <div className={styles.actions}>
+        <Button type="cancel" onClick={history.goBack} label={t('wizard.back')} />
+        <Button type="submit" label={loading ? 'loading' : t('wizard.next')} disabled={disableNext}>
+          {loading ? <Spinner /> : (t('wizard.next') as string)}
+        </Button>
+      </div>
+    </form>
   )
 }
 

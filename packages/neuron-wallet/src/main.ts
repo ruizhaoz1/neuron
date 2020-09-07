@@ -1,33 +1,28 @@
 import { app } from 'electron'
 
-import WalletService from 'services/wallets'
-import NetworksService from 'services/networks'
-import NodeController from 'controllers/node'
-import SyncController from 'controllers/sync'
 import AppController from 'controllers/app'
-import { changeLanguage } from 'utils/i18n'
-import env from 'env'
+import SettingsService from 'services/settings'
+import { changeLanguage } from 'locales/i18n'
 
 const appController = new AppController()
 
-app.on('ready', async () => {
-  changeLanguage(app.getLocale())
+const singleInstanceLock = app.requestSingleInstanceLock()
+if (singleInstanceLock) {
+  app.on('ready', async () => {
+    changeLanguage(SettingsService.getInstance().locale)
 
-  NetworksService.getInstance().notifyAll()
-  WalletService.getInstance().generateAddressesIfNecessary()
-  if (!env.isTestMode) {
-    await NodeController.startNode()
-    SyncController.startSyncing()
-  }
+    appController.start()
+  })
 
-  appController.openWindow()
-})
+  app.on('before-quit', async () => {
+    appController.end()
+  })
 
-app.on('before-quit', async () => {
-  if (!env.isTestMode) {
-    // No need to stop syncing as background process will be killed
-    NodeController.stopNode()
-  }
-})
+  app.on('activate', appController.openWindow)
 
-app.on('activate', appController.openWindow)
+  app.on('second-instance', () => {
+    appController.restoreWindow()
+  })
+} else {
+  app.quit()
+}

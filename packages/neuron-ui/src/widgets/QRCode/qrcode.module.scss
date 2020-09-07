@@ -1,0 +1,53 @@
+$qrcode-size: 220px;
+
+.qrcode {
+  position: relative;
+  display: block;
+  width: $qrcode-size;
+  margin: 0 auto;
+  margin-top: 79px;
+}
+
+.pic {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  canvas {
+    width: $qrcode-size;
+    height: $qrcode-size;
+    box-shadow: 1px 2px 6px 0 rgba(0, 0, 0, 0.5);
+  }
+}
+
+.actions {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 15px);
+
+  button {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    appearance: none;
+    border: none !important;
+    background: transparent !important;
+    min-width: unset;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 12px;
+    svg {
+      width: 14px;
+      height: 14px;
+      pointer-events: none;
+    }
+    &:hover {
+      g,
+      path {
+        stroke: var(--nervos-green);
+        fill: var(--nervos-green);
+      }
+    }
+  }
+}

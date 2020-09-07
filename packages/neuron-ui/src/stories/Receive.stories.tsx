@@ -1,13 +1,13 @@
 import React from 'react'
-import { Route, RouteComponentProps } from 'react-router-dom'
 import StoryRouter from 'storybook-react-router'
 import { storiesOf } from '@storybook/react'
 import { withKnobs, text, number } from '@storybook/addon-knobs'
 import { action } from '@storybook/addon-actions'
 import Receive from 'components/Receive'
-import initStates from 'states/initStates'
-import { StateWithDispatch } from 'states/stateProvider/reducer'
+import { initStates, NeuronWalletContext } from 'states'
 import addresses from './data/addresses'
+
+const dispatch = action('Dispatch')
 
 const states = {
   'Has no addresses': {
@@ -28,23 +28,18 @@ const states = {
   },
 }
 
-const ReceiveWithRouteProps = (props: StateWithDispatch) => {
-  return (
-    <Route
-      to="/123"
-      render={(routeProps: RouteComponentProps<{ address: string }>) => <Receive {...routeProps} {...props} />}
-    />
-  )
-}
-
 const stories = storiesOf('Receive', module).addDecorator(StoryRouter())
 
-Object.entries(states).forEach(([title, props]) => {
-  stories.add(title, () => <ReceiveWithRouteProps {...props} />)
+Object.entries(states).forEach(([title, state]) => {
+  stories.add(title, () => (
+    <NeuronWalletContext.Provider value={{ state, dispatch }}>
+      <Receive />
+    </NeuronWalletContext.Provider>
+  ))
 })
 
 stories.addDecorator(withKnobs).add('With knobs', () => {
-  const props = {
+  const state = {
     ...initStates,
     wallet: {
       ...initStates.wallet,
@@ -59,5 +54,9 @@ stories.addDecorator(withKnobs).add('With knobs', () => {
       })),
     },
   }
-  return <ReceiveWithRouteProps {...props} dispatch={() => {}} />
+  return (
+    <NeuronWalletContext.Provider value={{ state, dispatch }}>
+      <Receive />
+    </NeuronWalletContext.Provider>
+  )
 })

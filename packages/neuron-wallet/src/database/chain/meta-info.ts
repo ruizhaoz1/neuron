@@ -1,13 +1,19 @@
 import FileService from 'services/file'
-import { SystemScript } from 'models/lock-utils'
+import OutPoint from 'models/chain/out-point'
+import { ScriptHashType } from 'models/chain/script'
 
 const moduleName = 'cells'
 const fileName = 'meta-info.json'
 
+export interface SystemScript {
+  codeHash: string
+  outPoint: OutPoint
+  hashType: ScriptHashType
+}
+
 export interface MetaInfo {
   genesisBlockHash: string
   systemScriptInfo: SystemScript
-  chain: string // ckb | ckb_testnet | ckb_dev
   daoScriptInfo: SystemScript
 }
 

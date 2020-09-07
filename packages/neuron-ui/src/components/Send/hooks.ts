@@ -1,14 +1,22 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react'
+import { TFunction } from 'i18next'
+import jsQR from 'jsqr'
 
 import { AppActions, StateDispatch } from 'states/stateProvider/reducer'
+import { captureScreenshot, showErrorMessage } from 'services/remote'
 import { generateTx, generateSendingAllTx } from 'services/remote/wallets'
 
-import { outputsToTotalAmount, CKBToShannonFormatter, shannonToCKBFormatter } from 'utils/formatters'
-import { verifyAddress, verifyAmount, verifyAmountRange, verifyTransactionOutputs } from 'utils/validators'
-import { ErrorCode, MAX_DECIMAL_DIGITS } from 'utils/const'
-import calculateFee from 'utils/calculateFee'
+import {
+  outputsToTotalAmount,
+  CKBToShannonFormatter,
+  shannonToCKBFormatter,
+  calculateFee,
+  validateOutputs,
+  validateAddress,
+} from 'utils'
+import i18n from 'utils/i18n'
 
-import { TransactionOutput } from '.'
+import styles from './send.module.scss'
 
 let generateTxTimer: ReturnType<typeof setTimeout>
 
@@ -26,27 +34,39 @@ const updateTransactionWith = (generator: typeof generateTx | typeof generateSen
   setTotalAmount,
   setErrorMessage,
   updateTransactionOutput,
+  isMainnet,
   dispatch,
+  t,
 }: {
   walletID: string
   price: string
-  items: TransactionOutput[]
+  items: Readonly<State.Output[]>
   setTotalAmount: Function
   setErrorMessage: Function
   updateTransactionOutput?: Function
+  isMainnet: boolean
   dispatch: StateDispatch
+  t: TFunction
 }) => {
   const { value: type } = Object.getOwnPropertyDescriptor(generator, 'type')!
-  if (verifyTransactionOutputs(items, type === 'all')) {
-    if (type === 'common') {
+  if (items.length === 1 && items[0].amount === undefined) {
+    setTotalAmount('0')
+  } else if (type === 'common') {
+    try {
       const totalAmount = outputsToTotalAmount(items)
       setTotalAmount(totalAmount)
+    } catch (err) {
+      console.warn(err)
     }
+  }
+  try {
+    validateOutputs(items, isMainnet, type === 'all')
     const realParams = {
       walletID,
       items: items.map(item => ({
-        address: item.address,
+        address: item.address || '',
         capacity: CKBToShannonFormatter(item.amount, item.unit),
+        date: item.date,
       })),
       feeRate: price,
     }
@@ -70,7 +90,10 @@ const updateTransactionWith = (generator: typeof generateTx | typeof generateSen
           }
           return res.result
         }
-        throw new Error(res.message.content)
+        if (res.status === 0) {
+          throw new Error(res.message.content)
+        }
+        throw new Error(t(`messages.codes.${res.status}`))
       })
       .catch((err: Error) => {
         dispatch({
@@ -80,6 +103,8 @@ const updateTransactionWith = (generator: typeof generateTx | typeof generateSen
         setErrorMessage(err.message)
         return undefined
       })
+  } catch {
+    // ignore
   }
   dispatch({
     type: AppActions.UpdateGeneratedTx,
@@ -90,13 +115,13 @@ const updateTransactionWith = (generator: typeof generateTx | typeof generateSen
 
 const useUpdateTransactionOutput = (dispatch: StateDispatch) =>
   useCallback(
-    (field: string) => (idx: number) => (value: string) => {
+    (field: string) => (idx: number) => (value: string | undefined) => {
       dispatch({
         type: AppActions.UpdateSendOutput,
         payload: {
           idx,
           item: {
-            [field]: value.replace(/\s/, ''),
+            [field]: value,
           },
         },
       })
@@ -108,7 +133,6 @@ const useAddTransactionOutput = (dispatch: StateDispatch) =>
   useCallback(() => {
     dispatch({
       type: AppActions.AddSendOutput,
-      payload: null,
     })
   }, [dispatch])
 
@@ -125,12 +149,14 @@ const useRemoveTransactionOutput = (dispatch: StateDispatch) =>
 
 const useOnTransactionChange = (
   walletID: string,
-  items: TransactionOutput[],
+  items: State.Output[],
   price: string,
+  isMainnet: boolean,
   dispatch: StateDispatch,
   isSendMax: boolean,
   setTotalAmount: Function,
-  setErrorMessage: Function
+  setErrorMessage: Function,
+  t: TFunction
 ) => {
   useEffect(() => {
     clearTimeout(generateTxTimer)
@@ -149,45 +175,58 @@ const useOnTransactionChange = (
         price,
         setTotalAmount,
         setErrorMessage,
+        isMainnet,
         dispatch,
+        t,
       })
     }, 300)
-  }, [walletID, items, price, isSendMax, dispatch, setTotalAmount, setErrorMessage])
+  }, [walletID, items, price, isSendMax, dispatch, setTotalAmount, setErrorMessage, t, isMainnet])
 }
 
-const useOnSubmit = (items: TransactionOutput[], dispatch: StateDispatch) =>
+const useOnSubmit = (items: Readonly<State.Output[]>, isMainnet: boolean, dispatch: StateDispatch) =>
   useCallback(
-    (walletID: string = '') => () => {
-      if (verifyTransactionOutputs(items)) {
-        dispatch({
-          type: AppActions.UpdateTransactionID,
-          payload: null,
-        })
+    (e: React.FormEvent) => {
+      const {
+        dataset: { walletId, status },
+      } = e.target as HTMLFormElement
+      e.preventDefault()
+      if (status !== 'ready') {
+        return
+      }
+      try {
+        validateOutputs(items, isMainnet)
         dispatch({
           type: AppActions.RequestPassword,
           payload: {
-            walletID,
+            walletID: walletId as string,
             actionType: 'send',
           },
         })
+      } catch {
+        // ignore
       }
     },
-    [dispatch, items]
+    [dispatch, items, isMainnet]
   )
 
 const useOnItemChange = (updateTransactionOutput: Function) =>
   useCallback(
-    (e: any, value?: string) => {
-      const { field = '', idx = -1 } = e.target.dataset
-      if (undefined !== value) {
-        if (field === 'amount') {
-          if (Number.isNaN(+value) || /[^\d.]/.test(value) || +value < 0) {
-            return
-          }
-          updateTransactionOutput(field)(idx)(value)
-        } else {
-          updateTransactionOutput(field)(idx)(value)
+    (e: any) => {
+      const {
+        value,
+        dataset: { field = '', idx = -1 },
+      } = e.target
+      if (field === 'amount') {
+        const amount = value.replace(/,/g, '') || '0'
+        if (Number.isNaN(+amount) || /[^\d.]/.test(amount) || +amount < 0) {
+          return
         }
+        updateTransactionOutput(field)(idx)(amount)
+        return
+      }
+      if (field === 'address') {
+        const address = value
+        updateTransactionOutput(field)(idx)(address)
       }
     },
     [updateTransactionOutput]
@@ -195,27 +234,25 @@ const useOnItemChange = (updateTransactionOutput: Function) =>
 
 const useUpdateTransactionPrice = (dispatch: StateDispatch) =>
   useCallback(
-    (_e: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>, value?: string) => {
-      if (undefined !== value) {
-        const price = value.replace(/[^\d]/g, '')
-        dispatch({
-          type: AppActions.UpdateSendPrice,
-          payload: price,
-        })
-      }
+    (e: React.SyntheticEvent<HTMLInputElement>) => {
+      const { value } = e.target as HTMLInputElement
+      const price = value.split('.')[0].replace(/[^\d]/g, '')
+      dispatch({
+        type: AppActions.UpdateSendPrice,
+        payload: price.replace(/,/g, ''),
+      })
     },
     [dispatch]
   )
 
 const useSendDescriptionChange = (dispatch: StateDispatch) =>
   useCallback(
-    (_e: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>, value?: string) => {
-      if (undefined !== value) {
-        dispatch({
-          type: AppActions.UpdateSendDescription,
-          payload: value,
-        })
-      }
+    (e: React.SyntheticEvent<HTMLInputElement>) => {
+      const { value } = e.target as HTMLInputElement
+      dispatch({
+        type: AppActions.UpdateSendDescription,
+        payload: value,
+      })
     },
     [dispatch]
   )
@@ -223,7 +260,6 @@ const useSendDescriptionChange = (dispatch: StateDispatch) =>
 const clear = (dispatch: StateDispatch) => {
   dispatch({
     type: AppActions.ClearSendState,
-    payload: null,
   })
 }
 
@@ -231,12 +267,13 @@ const useClear = (dispatch: StateDispatch) => useCallback(() => clear(dispatch),
 
 export const useInitialize = (
   walletID: string,
-  items: TransactionOutput[],
+  items: Readonly<State.Output[]>,
   generatedTx: any | null,
   price: string,
   sending: boolean,
+  isMainnet: boolean,
   dispatch: React.Dispatch<any>,
-  t: any
+  t: TFunction
 ) => {
   const fee = useMemo(() => calculateFee(generatedTx), [generatedTx])
 
@@ -256,7 +293,7 @@ export const useInitialize = (
   const removeTransactionOutput = useRemoveTransactionOutput(dispatch)
   const updateTransactionPrice = useUpdateTransactionPrice(dispatch)
   const onDescriptionChange = useSendDescriptionChange(dispatch)
-  const onSubmit = useOnSubmit(items, dispatch)
+  const onSubmit = useOnSubmit(items, isMainnet, dispatch)
   const onClear = useClear(dispatch)
 
   const updateSendingAllTransaction = useCallback(() => {
@@ -267,13 +304,15 @@ export const useInitialize = (
       setTotalAmount,
       setErrorMessage,
       updateTransactionOutput,
+      isMainnet,
       dispatch,
+      t,
     }).then(tx => {
       if (!tx) {
         setIsSendMax(false)
       }
     })
-  }, [walletID, updateTransactionOutput, price, items, dispatch])
+  }, [walletID, updateTransactionOutput, price, items, dispatch, t, isMainnet])
 
   const onSendMaxClick = useCallback(() => {
     if (!isSendMax) {
@@ -287,60 +326,48 @@ export const useInitialize = (
     }
   }, [updateSendingAllTransaction, setIsSendMax, isSendMax, outputs.length, updateTransactionOutput, items])
 
+  const onScan = useCallback(
+    (e: React.SyntheticEvent<HTMLButtonElement>) => {
+      const {
+        dataset: { idx },
+      } = e.target as HTMLButtonElement
+      if (idx !== undefined && !(e.target as HTMLButtonElement).classList.contains(styles.busy)) {
+        ;[...document.querySelectorAll(`.${styles.scanBtn}`)].forEach(b => b.classList.add(styles.busy))
+        setTimeout(async () => {
+          const codes = await captureScreenshot().then(imageDataList =>
+            imageDataList.map(imageData =>
+              jsQR(imageData.data, imageData.width, imageData.height, {
+                inversionAttempts: 'dontInvert',
+              })
+            )
+          )
+          for (let i = 0; i < codes.length; i++) {
+            try {
+              validateAddress(codes[i]?.data ?? '', isMainnet)
+              updateTransactionOutput('address')(+idx)(codes[i]!.data)
+              ;[...document.querySelectorAll(`.${styles.scanBtn}`)].forEach(b => b.classList.remove(styles.busy))
+              return
+            } catch {
+              // ignore
+            }
+          }
+          showErrorMessage(i18n.t('messages.error'), i18n.t('messages.no-valid-addresses-found'))
+          ;[...document.querySelectorAll(`.${styles.scanBtn}`)].forEach(b => b.classList.remove(styles.busy))
+        }, 100)
+      }
+    },
+    [updateTransactionOutput, isMainnet]
+  )
+
   useEffect(() => {
     if (isSendMax) {
       updateSendingAllTransaction()
     }
-  }, [isSendMax, price])
+  }, [isSendMax, price, updateSendingAllTransaction])
 
   useEffect(() => {
     clear(dispatch)
   }, [walletID, dispatch])
-
-  const onGetAddressErrorMessage: (isMainnet: boolean) => (addr: string) => string = useCallback(
-    (isMainnet: boolean) => (addr: string) => {
-      if (addr === '') {
-        return t(`messages.codes.${ErrorCode.AddressIsEmpty}`)
-      }
-      if (isMainnet && !addr.startsWith('ckb')) {
-        return t(`messages.mainnet-address-required`)
-      }
-      if (!isMainnet && !addr.startsWith('ckt')) {
-        return t(`messages.testnet-address-required`)
-      }
-      if (!verifyAddress(addr)) {
-        return t(`messages.codes.${ErrorCode.FieldInvalid}`, {
-          fieldName: 'address',
-          fieldValue: addr,
-        })
-      }
-      return ''
-    },
-    [t]
-  )
-
-  const onGetAmountErrorMessage = useCallback(
-    (text: string) => {
-      const amount = text || '0'
-
-      const msg = verifyAmount(amount)
-      if (typeof msg === 'object') {
-        return t(`messages.codes.${msg.code}`, {
-          fieldName: 'amount',
-          fieldValue: amount,
-          length: MAX_DECIMAL_DIGITS,
-        })
-      }
-      if (!verifyAmountRange(amount)) {
-        return t(`messages.codes.${ErrorCode.AmountTooSmall}`, {
-          amount,
-        })
-      }
-
-      return undefined
-    },
-    [t]
-  )
 
   return {
     outputs,
@@ -351,16 +378,16 @@ export const useInitialize = (
     onItemChange,
     addTransactionOutput,
     removeTransactionOutput,
+    updateTransactionOutput,
     updateTransactionPrice,
     onDescriptionChange,
-    onGetAddressErrorMessage,
-    onGetAmountErrorMessage,
     onSubmit,
     onClear,
     errorMessage,
     setErrorMessage,
     isSendMax,
     onSendMaxClick,
+    onScan,
   }
 }
 

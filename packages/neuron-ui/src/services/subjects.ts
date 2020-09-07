@@ -1,3 +1,8 @@
+import { CONSTANTS } from 'utils'
+import { ipcRenderer } from 'electron'
+
+const { LOCALES } = CONSTANTS
+
 const FallbackSubject = {
   subscribe: (args: any) => {
     console.warn('The remote module is not found, please make sure the UI is running inside the Electron App')
@@ -12,7 +17,6 @@ const FallbackSubject = {
 
 const SubjectConstructor = <T>(
   channel:
-    | 'system-script-updated'
     | 'data-updated'
     | 'current-wallet-updated'
     | 'wallet-list-updated'
@@ -22,23 +26,24 @@ const SubjectConstructor = <T>(
     | 'synced-block-number-updated'
     | 'command'
     | 'app-updater-updated'
+    | 'navigation'
+    | 'set-locale'
 ) => {
-  return window.ipcRenderer
+  return ipcRenderer
     ? {
         subscribe: (handler: (data: T) => void) => {
-          window.ipcRenderer.on(channel, (_e: Event, data: T) => {
+          ipcRenderer.on(channel, (_e: Event, data: T) => {
             handler(data)
           })
           return {
             unsubscribe: () => {
-              window.ipcRenderer.removeAllListeners(channel)
+              ipcRenderer.removeAllListeners(channel)
             },
           }
         },
       }
     : FallbackSubject
 }
-export const SystemScript = SubjectConstructor<Subject.SystemScript>('system-script-updated')
 export const DataUpdate = SubjectConstructor<Subject.DataUpdateMetaInfo>('data-updated')
 export const CurrentWallet = SubjectConstructor<any>('current-wallet-updated')
 export const WalletList = SubjectConstructor<any[]>('wallet-list-updated')
@@ -48,9 +53,10 @@ export const ConnectionStatus = SubjectConstructor<Subject.ConnectionStatus>('co
 export const SyncedBlockNumber = SubjectConstructor<Subject.BlockNumber>('synced-block-number-updated')
 export const AppUpdater = SubjectConstructor<Subject.AppUpdater>('app-updater-updated')
 export const Command = SubjectConstructor<Subject.CommandMetaInfo>('command')
+export const Navigation = SubjectConstructor<Subject.URL>('navigation')
+export const SetLocale = SubjectConstructor<typeof LOCALES[number]>('set-locale')
 
 export default {
-  SystemScript,
   DataUpdate,
   CurrentWallet,
   WalletList,
@@ -60,4 +66,6 @@ export default {
   SyncedBlockNumber,
   AppUpdater,
   Command,
+  Navigation,
+  SetLocale,
 }

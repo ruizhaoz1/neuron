@@ -1,13 +1,13 @@
-import i18n from 'utils/i18n'
+import { t } from 'i18next'
 
 export class CellIsNotYetLive extends Error {
   constructor() {
-    super(i18n.t('messages.cell-is-not-yet-live'))
+    super(t('messages.cell-is-not-yet-live'))
   }
 }
 
 export class TransactionIsNotCommittedYet extends Error {
   constructor() {
-    super(i18n.t('messages.transaction-is-not-committed-yet'))
+    super(t('messages.transaction-is-not-committed-yet'))
   }
 }

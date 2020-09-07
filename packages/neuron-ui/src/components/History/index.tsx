@@ -1,45 +1,53 @@
-import React, { useCallback, useEffect, useMemo } from 'react'
-import { RouteComponentProps } from 'react-router-dom'
+import React, { useState, useCallback, useMemo } from 'react'
+import { useHistory, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Stack, SearchBox } from 'office-ui-fabric-react'
-import { Pagination } from '@uifabric/experiments'
+import Pagination from 'widgets/Pagination'
 
 import TransactionList from 'components/TransactionList'
-import { StateWithDispatch } from 'states/stateProvider/reducer'
+import { useState as useGlobalState, useDispatch } from 'states'
+import Button from 'widgets/Button'
+import { exportTransactions } from 'services/remote'
+import { ReactComponent as Export } from 'widgets/Icons/ExportHistory.svg'
 
-import { Routes, MAINNET_TAG } from 'utils/const'
+import { RoutePath, isMainnet as isMainnetUtil } from 'utils'
 
 import { useSearch } from './hooks'
+import styles from './history.module.scss'
 
-const History = ({
-  app: {
-    tipBlockNumber: chainBlockNumber,
-    loadings: { transactionList: isLoading },
-  },
-  wallet: { id },
-  chain: {
-    networkID,
-    tipBlockNumber: syncedBlockNumber,
-    transactions: { pageNo = 1, pageSize = 15, totalCount = 0, items = [] },
-  },
-  settings: { networks },
-  history,
-  location: { search },
-  dispatch,
-}: React.PropsWithoutRef<StateWithDispatch & RouteComponentProps>) => {
+const History = () => {
+  const {
+    app: {
+      tipBlockNumber: chainBlockNumber,
+      loadings: { transactionList: isLoading },
+    },
+    wallet: { id, name: walletName },
+    chain: {
+      networkID,
+      tipBlockNumber: syncedBlockNumber,
+      transactions: { pageNo = 1, pageSize = 15, totalCount = 0, items = [] },
+    },
+    settings: { networks },
+  } = useGlobalState()
+  const dispatch = useDispatch()
   const [t] = useTranslation()
-  const isMainnet = useMemo(() => {
-    const network = networks.find(n => n.id === networkID)
-    return !!(network && network.chain === MAINNET_TAG)
-  }, [networks, networkID])
+  const history = useHistory()
+  const { search } = useLocation()
+  const [isExporting, setIsExporting] = useState(false)
+  const isMainnet = isMainnetUtil(networks, networkID)
 
   const { keywords, onKeywordsChange } = useSearch(search, id, dispatch)
-  useEffect(() => {
-    if (id) {
-      history.push(`${Routes.History}?pageNo=1&keywords=${''}`)
-    }
-  }, [id, history])
-  const onSearch = useCallback(() => history.push(`${Routes.History}?keywords=${keywords}`), [history, keywords])
+  const onSearch = useCallback(() => history.push(`${RoutePath.History}?keywords=${keywords}`), [history, keywords])
+  const onExport = useCallback(() => {
+    setIsExporting(true)
+    const timer = setTimeout(() => {
+      setIsExporting(false)
+    }, 3000)
+    exportTransactions({ walletID: id }).finally(() => {
+      clearTimeout(timer)
+      setIsExporting(false)
+    })
+  }, [id, setIsExporting])
 
   const tipBlockNumber = useMemo(() => {
     return Math.max(+syncedBlockNumber, +chainBlockNumber).toString()
@@ -47,45 +55,61 @@ const History = ({
 
   const List = useMemo(() => {
     return (
-      <Stack>
-        <Stack horizontal horizontalAlign="end" tokens={{ childrenGap: 15 }}>
+      <Stack className={styles.container}>
+        <div className={styles.tools}>
           <SearchBox
             value={keywords}
-            styles={{ root: { width: 500 } }}
+            className={styles.searchBox}
+            styles={{
+              root: {
+                background: '#e3e3e3',
+                borderRadius: 0,
+                fontSize: '1rem',
+                border: '1px solid rgb(204, 204, 204)',
+                borderTopLeftRadius: 2,
+                borderBottomLeftRadius: 2,
+              },
+            }}
             placeholder={t('history.search.placeholder')}
             onChange={onKeywordsChange}
             onSearch={onSearch}
             iconProps={{ iconName: 'Search', styles: { root: { height: '18px' } } }}
           />
-        </Stack>
-        <TransactionList
-          isLoading={isLoading}
-          walletID={id}
-          items={items}
-          tipBlockNumber={tipBlockNumber}
-          isMainnet={isMainnet}
-          dispatch={dispatch}
-        />
-        <Pagination
-          selectedPageIndex={pageNo - 1}
-          pageCount={Math.ceil(totalCount / pageSize)}
-          itemsPerPage={pageSize}
-          totalItemCount={totalCount}
-          previousPageAriaLabel={t('pagination.previous-page')}
-          nextPageAriaLabel={t('pagination.next-page')}
-          firstPageAriaLabel={t('pagination.first-page')}
-          lastPageAriaLabel={t('pagination.last-page')}
-          pageAriaLabel={t('pagination.page')}
-          selectedAriaLabel={t('pagination.selected')}
-          firstPageIconProps={{ iconName: 'FirstPage' }}
-          previousPageIconProps={{ iconName: 'PrevPage' }}
-          nextPageIconProps={{ iconName: 'NextPage' }}
-          lastPageIconProps={{ iconName: 'LastPage' }}
-          format="buttons"
-          onPageChange={(idx: number) => {
-            history.push(`${Routes.History}?pageNo=${idx + 1}&keywords=${keywords}`)
-          }}
-        />
+          <Button className={styles.searchBtn} type="default" label={t('history.search.button')} onClick={onSearch} />
+          <Button
+            className={styles.exportBtn}
+            type="primary"
+            disabled={isExporting}
+            onClick={onExport}
+            label={t('history.export-history')}
+          >
+            <Export />
+          </Button>
+        </div>
+        <div>
+          {totalCount ? (
+            <TransactionList
+              isLoading={isLoading}
+              walletID={id}
+              walletName={walletName}
+              items={items as State.Transaction[]}
+              tipBlockNumber={tipBlockNumber}
+              isMainnet={isMainnet}
+              dispatch={dispatch}
+            />
+          ) : null}
+        </div>
+        {totalCount ? null : <div className={styles.noTxs}>{t('history.no-txs')}</div>}
+        <div className={styles.pagination}>
+          <Pagination
+            count={totalCount}
+            pageSize={pageSize}
+            pageNo={pageNo}
+            onChange={(no: number) => {
+              history.push(`${RoutePath.History}?pageNo=${no}&keywords=${keywords}`)
+            }}
+          />
+        </div>
       </Stack>
     )
   }, [
@@ -94,6 +118,7 @@ const History = ({
     onSearch,
     isLoading,
     id,
+    walletName,
     items,
     tipBlockNumber,
     dispatch,
@@ -103,6 +128,8 @@ const History = ({
     history,
     isMainnet,
     t,
+    isExporting,
+    onExport,
   ])
 
   return List

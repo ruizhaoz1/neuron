@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-
+import { useHistory } from 'react-router-dom'
 import { NeuronWalletActions, StateDispatch, AppActions } from 'states/stateProvider/reducer'
 import {
   updateTransactionList,
@@ -11,55 +11,64 @@ import {
 
 import { getWinID } from 'services/remote'
 import {
-  SystemScript as SystemScriptSubject,
   DataUpdate as DataUpdateSubject,
   NetworkList as NetworkListSubject,
   CurrentNetworkID as CurrentNetworkIDSubject,
   ConnectionStatus as ConnectionStatusSubject,
   SyncedBlockNumber as SyncedBlockNumberSubject,
-  AppUpdater as AppUpdaterSubject,
   Command as CommandSubject,
 } from 'services/subjects'
 import { ckbCore, getBlockchainInfo, getTipHeader } from 'services/chain'
-import { ConnectionStatus, ErrorCode } from 'utils/const'
-import {
-  networks as networksCache,
-  currentNetworkID as currentNetworkIDCache,
-  systemScript as systemScriptCache,
-} from 'services/localCache'
+import { networks as networksCache, currentNetworkID as currentNetworkIDCache } from 'services/localCache'
+import { WalletWizardPath } from 'components/WalletWizard'
+import { ConnectionStatus, ErrorCode, RoutePath } from 'utils'
 
-let timer: NodeJS.Timeout
 const SYNC_INTERVAL_TIME = 4000
+const CONNECTING_BUFFER = 15_000
+let CONNECTING_DEADLINE = Date.now() + CONNECTING_BUFFER
+
+const isCurrentUrl = (url: string) => {
+  const id = currentNetworkIDCache.load()
+  const list = networksCache.load()
+  const cached = list.find(n => n.id === id)?.remote
+  return cached === url
+}
 
 export const useSyncChainData = ({ chainURL, dispatch }: { chainURL: string; dispatch: StateDispatch }) => {
   useEffect(() => {
+    let timer: NodeJS.Timeout
     const syncBlockchainInfo = () => {
       Promise.all([getTipHeader(), getBlockchainInfo()])
         .then(([header, chainInfo]) => {
-          dispatch({
-            type: AppActions.UpdateChainInfo,
-            payload: {
-              tipBlockNumber: `${BigInt(header.number)}`,
-              tipBlockHash: header.hash,
-              tipBlockTimestamp: +header.timestamp,
-              chain: chainInfo.chain,
-              difficulty: BigInt(chainInfo.difficulty),
-              epoch: chainInfo.epoch,
-            },
-          })
+          if (isCurrentUrl(chainURL)) {
+            dispatch({
+              type: AppActions.UpdateChainInfo,
+              payload: {
+                tipBlockNumber: `${BigInt(header.number)}`,
+                tipBlockHash: header.hash,
+                tipBlockTimestamp: +header.timestamp,
+                chain: chainInfo.chain,
+                difficulty: BigInt(chainInfo.difficulty),
+                epoch: chainInfo.epoch,
+              },
+            })
 
-          dispatch({
-            type: AppActions.ClearNotificationsOfCode,
-            payload: ErrorCode.NodeDisconnected,
-          })
+            dispatch({
+              type: AppActions.ClearNotificationsOfCode,
+              payload: ErrorCode.NodeDisconnected,
+            })
+          }
         })
-        .catch((err: Error) => {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn(err)
+        .catch(() => {
+          if (isCurrentUrl(chainURL)) {
+            dispatch({
+              type: NeuronWalletActions.UpdateConnectionStatus,
+              payload: Date.now() > CONNECTING_DEADLINE ? ConnectionStatus.Offline : ConnectionStatus.Connecting,
+            })
           }
         })
     }
-    clearInterval(timer)
+    clearInterval(timer!)
     if (chainURL) {
       ckbCore.setNode(chainURL)
       syncBlockchainInfo()
@@ -82,17 +91,12 @@ export const useOnCurrentWalletChange = ({
 }: {
   walletID: string
   chain: State.Chain
-  i18n: any
-  history: any
+  history: ReturnType<typeof useHistory>
 
   dispatch: StateDispatch
 }) => {
   useEffect(() => {
-    if (walletID) {
-      initAppState()(dispatch, history)
-    } else {
-      initAppState()(dispatch, history)
-    }
+    initAppState()(dispatch, history)
   }, [walletID, dispatch, history])
 }
 
@@ -106,18 +110,11 @@ export const useSubscription = ({
   walletID: string
   chain: State.Chain
   isAllowedToFetchList: boolean
-  history: any
+  history: ReturnType<typeof useHistory>
   dispatch: StateDispatch
 }) => {
   const { pageNo, pageSize, keywords } = chain.transactions
   useEffect(() => {
-    const systemScriptSubscription = SystemScriptSubject.subscribe(({ codeHash = '' }: { codeHash: string }) => {
-      systemScriptCache.save({ codeHash })
-      dispatch({
-        type: NeuronWalletActions.UpdateCodeHash,
-        payload: codeHash,
-      })
-    })
     const dataUpdateSubscription = DataUpdateSubject.subscribe(({ dataType, walletID: walletIDOfMessage }: any) => {
       if (walletIDOfMessage && walletIDOfMessage !== walletID) {
         return
@@ -134,21 +131,26 @@ export const useSubscription = ({
           if (!isAllowedToFetchList) {
             break
           }
-          updateTransactionList({
-            walletID,
-            keywords,
-            pageNo,
-            pageSize,
-          })(dispatch)
+          updateAddressListAndBalance(walletID)(dispatch)
+          updateTransactionList({ walletID, keywords, pageNo, pageSize })(dispatch)
           break
         }
         case 'current-wallet': {
-          updateCurrentWallet()(dispatch, history)
+          updateCurrentWallet()(dispatch).then(hasCurrent => {
+            if (!hasCurrent) {
+              history.push(`${RoutePath.WalletWizard}${WalletWizardPath.Welcome}`)
+            }
+          })
           break
         }
         case 'wallets': {
-          updateWalletList()(dispatch, history)
-          updateCurrentWallet()(dispatch, history)
+          Promise.all([updateWalletList, updateCurrentWallet].map(request => request()(dispatch))).then(
+            ([hasList, hasCurrent]) => {
+              if (!hasList || !hasCurrent) {
+                history.push(`${RoutePath.WalletWizard}${WalletWizardPath.Welcome}`)
+              }
+            }
+          )
           break
         }
         default: {
@@ -168,13 +170,20 @@ export const useSubscription = ({
         type: NeuronWalletActions.UpdateCurrentNetworkID,
         payload: currentNetworkID,
       })
+      CONNECTING_DEADLINE = Date.now() + CONNECTING_BUFFER
       currentNetworkIDCache.save(currentNetworkID)
     })
     const connectionStatusSubscription = ConnectionStatusSubject.subscribe(status => {
-      dispatch({
-        type: NeuronWalletActions.UpdateConnectionStatus,
-        payload: status ? ConnectionStatus.Online : ConnectionStatus.Offline,
-      })
+      if (isCurrentUrl(status.url)) {
+        let payload = status.connected ? ConnectionStatus.Online : ConnectionStatus.Offline
+        if (payload === ConnectionStatus.Offline && Date.now() <= CONNECTING_DEADLINE) {
+          payload = ConnectionStatus.Connecting
+        }
+        dispatch({
+          type: NeuronWalletActions.UpdateConnectionStatus,
+          payload,
+        })
+      }
     })
 
     const syncedBlockNumberSubscription = SyncedBlockNumberSubject.subscribe(syncedBlockNumber => {
@@ -184,18 +193,14 @@ export const useSubscription = ({
       })
     })
 
-    const appUpdaterSubscription = AppUpdaterSubject.subscribe(appUpdaterInfo => {
-      dispatch({
-        type: NeuronWalletActions.UpdateAppUpdaterStatus,
-        payload: appUpdaterInfo,
-      })
-    })
-
     const commandSubscription = CommandSubject.subscribe(({ winID, type, payload }: Subject.CommandMetaInfo) => {
       if (winID && getWinID() === winID) {
         switch (type) {
-          case 'nav': {
-            history.push(payload)
+          // TODO: is this used anymore?
+          case 'navigate-to-url': {
+            if (payload) {
+              history.push(payload)
+            }
             break
           }
           case 'delete-wallet': {
@@ -225,13 +230,11 @@ export const useSubscription = ({
       }
     })
     return () => {
-      systemScriptSubscription.unsubscribe()
       dataUpdateSubscription.unsubscribe()
       networkListSubscription.unsubscribe()
       currentNetworkIDSubscription.unsubscribe()
       connectionStatusSubscription.unsubscribe()
       syncedBlockNumberSubscription.unsubscribe()
-      appUpdaterSubscription.unsubscribe()
       commandSubscription.unsubscribe()
     }
   }, [walletID, pageNo, pageSize, keywords, isAllowedToFetchList, history, dispatch])

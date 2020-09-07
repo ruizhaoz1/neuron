@@ -9,10 +9,41 @@ const transactions: {
       updatedAt: '',
       timestamp: '',
       value: '-10000',
+      hash: '0x70abeeaa2ed08b7d7659341a122b9a2f2ede99bb6bd0df7398d7ffe488beab60',
+      description: 'description of send transaction',
+      blockNumber: '120',
+      status: 'pending',
+      nervosDao: false,
+      sudtInfo: {
+        sUDT: {
+          tokenID: 'token id',
+          tokenName: '',
+          symbol: '',
+          decimal: '',
+        },
+        amount: '100000',
+      },
+    },
+    {
+      type: 'send',
+      createdAt: (new Date(1565240655845).getTime() - 100000).toString(),
+      updatedAt: '',
+      timestamp: '',
+      value: '-10000',
       hash: '0x70abeeaa2ed08b7d7659341a122b9a2f2ede99bb6bd0df7398d7ffe488beab61',
       description: 'description of send transaction',
       blockNumber: '120',
       status: 'pending',
+      nervosDao: false,
+      sudtInfo: {
+        sUDT: {
+          tokenID: 'token id',
+          tokenName: 'Token Name',
+          symbol: 'Token Symbol',
+          decimal: '12',
+        },
+        amount: '100000',
+      },
     },
     {
       type: 'receive',
@@ -24,6 +55,16 @@ const transactions: {
       description: 'description of receive transaction',
       blockNumber: '120',
       status: 'pending',
+      nervosDao: false,
+      sudtInfo: {
+        sUDT: {
+          tokenID: 'token id',
+          tokenName: 'Token Name',
+          symbol: 'Token Symbol',
+          decimal: '12',
+        },
+        amount: '-100000',
+      },
     },
     {
       type: 'send',
@@ -35,6 +76,7 @@ const transactions: {
       description: 'description of send transaction',
       blockNumber: '120',
       status: 'success',
+      nervosDao: true,
     },
     {
       type: 'receive',
@@ -46,6 +88,7 @@ const transactions: {
       description: 'description of receive transaction',
       blockNumber: '120',
       status: 'success',
+      nervosDao: false,
     },
     {
       type: 'send',
@@ -57,6 +100,7 @@ const transactions: {
       description: 'description of send transaction',
       blockNumber: '0',
       status: 'success',
+      nervosDao: true,
     },
     {
       type: 'receive',
@@ -68,6 +112,7 @@ const transactions: {
       description: 'description of receive transaction',
       blockNumber: '0',
       status: 'success',
+      nervosDao: false,
     },
     {
       type: 'send',
@@ -79,6 +124,7 @@ const transactions: {
       description: 'description of send transaction',
       blockNumber: '0',
       status: 'failed',
+      nervosDao: true,
     },
     {
       type: 'receive',
@@ -90,6 +136,7 @@ const transactions: {
       description: 'description of receive transaction',
       blockNumber: '0',
       status: 'failed',
+      nervosDao: false,
     },
     {
       type: 'send',
@@ -101,6 +148,7 @@ const transactions: {
       description: 'description of send transaction',
       blockNumber: '0',
       status: 'failed',
+      nervosDao: true,
     },
     {
       type: 'receive',
@@ -112,6 +160,7 @@ const transactions: {
       description: 'description of receive transaction',
       blockNumber: '0',
       status: 'failed',
+      nervosDao: false,
     },
     {
       type: 'send',
@@ -123,6 +172,7 @@ const transactions: {
       description: 'description of send transaction',
       blockNumber: '0',
       status: 'failed',
+      nervosDao: true,
     },
     {
       type: 'receive',
@@ -134,6 +184,7 @@ const transactions: {
       description: 'description of receive transaction',
       blockNumber: '0',
       status: 'failed',
+      nervosDao: false,
     },
     {
       type: 'send',
@@ -145,6 +196,7 @@ const transactions: {
       description: 'description of send transaction',
       blockNumber: '0',
       status: 'failed',
+      nervosDao: true,
     },
     {
       type: 'receive',
@@ -156,6 +208,7 @@ const transactions: {
       description: 'description of receive transaction',
       blockNumber: '0',
       status: 'failed',
+      nervosDao: false,
     },
   ],
 }

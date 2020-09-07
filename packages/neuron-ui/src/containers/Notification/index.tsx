@@ -1,17 +1,20 @@
-import React, { useContext, useMemo, useCallback, MouseEventHandler } from 'react'
+import React, { useMemo, useCallback, MouseEventHandler } from 'react'
 import { createPortal } from 'react-dom'
-import { RouteComponentProps } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Stack, MessageBar, MessageBarType, IconButton, Panel, PanelType, Text } from 'office-ui-fabric-react'
-import { openExternal } from 'services/remote'
-import { NeuronWalletContext } from 'states/stateProvider'
-import { StateWithDispatch, StateDispatch } from 'states/stateProvider/reducer'
 import {
+  useState as useGlobalState,
+  useDispatch,
+  StateDispatch,
   toggleAllNotificationVisibility,
   toggleTopAlertVisibility,
   dismissNotification,
-} from 'states/stateProvider/actionCreators'
-import { ErrorCode, RUN_NODE_GUIDE_URL } from 'utils/const'
+  dismissGlobalDialog,
+} from 'states'
+import { useOnLocaleChange, useGlobalNotifications } from 'utils'
+
+import GlobalDialog from 'widgets/GlobalDialog'
+import AlertDialog from 'widgets/AlertDialog'
 import styles from './Notification.module.scss'
 
 const notificationType = (type: 'success' | 'warning' | 'alert') => {
@@ -59,11 +62,21 @@ const TopAlertActions = ({
   </Stack>
 )
 
-export const NoticeContent = ({ dispatch }: React.PropsWithoutRef<StateWithDispatch & RouteComponentProps>) => {
+export const NoticeContent = () => {
   const {
-    app: { notifications = [], popups = [], showTopAlert = false, showAllNotifications = false },
-  } = useContext(NeuronWalletContext)
-  const [t] = useTranslation()
+    app: {
+      notifications = [],
+      alertDialog = null,
+      popups = [],
+      showTopAlert = false,
+      showAllNotifications = false,
+      globalDialog = null,
+    },
+  } = useGlobalState()
+  const dispatch = useDispatch()
+  const [t, i18n] = useTranslation()
+  useOnLocaleChange(i18n)
+  useGlobalNotifications(dispatch)
 
   const notificationsInDesc = useMemo(() => [...notifications].reverse(), [notifications])
   const notification: State.Message | undefined = notificationsInDesc[0]
@@ -83,9 +96,9 @@ export const NoticeContent = ({ dispatch }: React.PropsWithoutRef<StateWithDispa
     [dispatch]
   )
 
-  const onGuideLinkClick = useCallback(() => {
-    openExternal(RUN_NODE_GUIDE_URL)
-  }, [])
+  const onGlobalDialogDismiss = useCallback(() => {
+    dismissGlobalDialog()(dispatch)
+  }, [dispatch])
 
   return (
     <div>
@@ -108,11 +121,6 @@ export const NoticeContent = ({ dispatch }: React.PropsWithoutRef<StateWithDispa
           {notification.code
             ? t(`messages.codes.${notification.code}`, notification.meta)
             : notification.content || t('messages.unknown-error')}
-          {notification.code === ErrorCode.NodeDisconnected ? (
-            <Text as="span" variant="xSmall" className={styles.guide} onClick={onGuideLinkClick}>
-              {t('messages.run-ckb-guide')}
-            </Text>
-          ) : null}
         </MessageBar>
       ) : null}
 
@@ -174,6 +182,8 @@ export const NoticeContent = ({ dispatch }: React.PropsWithoutRef<StateWithDispa
           )
         })}
       </Panel>
+      <GlobalDialog type={globalDialog} onDismiss={onGlobalDialogDismiss} />
+      <AlertDialog content={alertDialog} dispatch={dispatch} />
     </div>
   )
 }

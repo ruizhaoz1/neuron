@@ -1,17 +1,25 @@
 import { getConnection, QueryRunner } from 'typeorm'
-import { OutPoint, Transaction, TransactionWithoutHash, TransactionStatus } from 'types/cell-types'
 import InputEntity from 'database/chain/entities/input'
 import OutputEntity from 'database/chain/entities/output'
 import TransactionEntity from 'database/chain/entities/transaction'
-import LockUtils from 'models/lock-utils'
-import { OutputStatus, TxSaveType } from './params'
-import Utils from 'services/sync/utils'
+import ArrayUtils from 'utils/array'
+import CommonUtils from 'utils/common'
+import logger from 'utils/logger'
+import OutPoint from 'models/chain/out-point'
+import Output, { OutputStatus } from 'models/chain/output'
+import Transaction, { TransactionStatus } from 'models/chain/transaction'
+import Input from 'models/chain/input'
+
+export enum TxSaveType {
+  Sent = 'sent',
+  Fetch = 'fetch',
+}
 
 export class TransactionPersistor {
   // After the tx is sent:
   // 1. If the tx is not persisted before sending, output = sent, input = pending
   // 2. If the tx is already persisted before sending, do nothing
-  public static saveWithSent = async (transaction: Transaction): Promise<TransactionEntity> => {
+  private static saveWithSent = async (transaction: Transaction): Promise<TransactionEntity> => {
     const txEntity: TransactionEntity | undefined = await getConnection()
       .getRepository(TransactionEntity)
       .findOne(transaction.hash)
@@ -34,18 +42,71 @@ export class TransactionPersistor {
   // After the tx is fetched:
   // 1. If the tx is not persisted before fetching, output = live, input = dead
   // 2. If the tx is already persisted before fetching, output = live, input = dead
-  public static saveWithFetch = async (transaction: Transaction): Promise<TransactionEntity> => {
+  private static saveWithFetch = async (transaction: Transaction): Promise<TransactionEntity> => {
     const connection = getConnection()
     const txEntity: TransactionEntity | undefined = await connection
       .getRepository(TransactionEntity)
       .findOne(transaction.hash)
 
-    // return if success
-    if (txEntity && txEntity.status === TransactionStatus.Success) {
-      return txEntity
-    }
-
+    // update multiSignBlake160 / input.type / input.data / output.data
     if (txEntity) {
+      const outputsToUpdate: Output[] = transaction.outputs.filter((o, i) => !!o.multiSignBlake160 || transaction.outputsData[i].length > 2)
+      const inputsToUpdate: Input[] = transaction.inputs.filter(i => !!i.multiSignBlake160 || (i.data && i.data.length > 2) || i.type)
+
+      if (outputsToUpdate.length || inputsToUpdate.length) {
+        // update multiSignBlake160Info
+        // also update input which previous output in outputsToUpdate
+        await getConnection().manager.transaction(async transactionalEntityManager => {
+          for (const o of outputsToUpdate) {
+            const data = transaction.outputsData[+o.outPoint!.index].slice(0, 130)
+            await transactionalEntityManager
+              .createQueryBuilder()
+              .update(OutputEntity)
+              .set({
+                multiSignBlake160: o.multiSignBlake160,
+                data,
+              })
+              .where({
+                outPointTxHash: o.outPoint!.txHash,
+                outPointIndex: o.outPoint!.index
+              })
+              .execute()
+
+            await transactionalEntityManager
+              .createQueryBuilder()
+              .update(InputEntity)
+              .set({
+                multiSignBlake160: o.multiSignBlake160,
+                data,
+              })
+              .where({
+                outPointTxHash: o.outPoint!.txHash,
+                outPointIndex: o.outPoint!.index
+              })
+              .execute()
+          }
+
+          for (const i of inputsToUpdate) {
+            await transactionalEntityManager
+              .createQueryBuilder()
+              .update(InputEntity)
+              .set({
+                multiSignBlake160: i.multiSignBlake160,
+                data: i.data?.slice(0, 130) || '0x',
+                typeCodeHash: i.type?.codeHash,
+                typeArgs: i.type?.args,
+                typeHashType: i.type?.hashType,
+                typeHash: i.typeHash,
+              })
+              .where({
+                outPointTxHash: i.previousOutput!.txHash,
+                outPointIndex: i.previousOutput!.index
+              })
+              .execute()
+          }
+        })
+      }
+
       // lazy load inputs / outputs
       const inputEntities = await connection
         .getRepository(InputEntity)
@@ -59,8 +120,9 @@ export class TransactionPersistor {
         .getRepository(OutputEntity)
         .createQueryBuilder('output')
         .where({
-          transaction: txEntity,
+          transaction: txEntity
         })
+        .andWhere('status != :status', {status: OutputStatus.Dead})
         .getMany()
 
       // input -> previousOutput => dead
@@ -106,15 +168,17 @@ export class TransactionPersistor {
       await queryRunner.startTransaction()
       try {
         await queryRunner.manager.save(txEntity)
-        for (const slice of Utils.eachSlice(previousOutputs, sliceSize)) {
+        for (const slice of ArrayUtils.eachSlice(previousOutputs, sliceSize)) {
           await queryRunner.manager.save(slice)
         }
-        for (const slice of Utils.eachSlice(outputs, sliceSize)) {
+        for (const slice of ArrayUtils.eachSlice(outputs, sliceSize)) {
           await queryRunner.manager.save(slice)
         }
         await queryRunner.commitTransaction()
       } catch (err) {
+        logger.error('Database:\tsaveWithFetch update error:', err)
         await queryRunner.rollbackTransaction()
+        throw err
       } finally {
         await queryRunner.release()
       }
@@ -133,15 +197,15 @@ export class TransactionPersistor {
   ): Promise<TransactionEntity> => {
     const connection = getConnection()
     const tx = new TransactionEntity()
-    tx.hash = transaction.hash
+    tx.hash = transaction.hash || transaction.computeHash()
     tx.version = transaction.version
-    tx.headerDeps = transaction.headerDeps!
-    tx.cellDeps = transaction.cellDeps!
+    tx.headerDeps = transaction.headerDeps
+    tx.cellDeps = transaction.cellDeps
     tx.timestamp = transaction.timestamp!
     tx.blockHash = transaction.blockHash!
     tx.blockNumber = transaction.blockNumber!
-    tx.witnesses = transaction.witnesses!
-    tx.description = transaction.description
+    tx.witnesses = transaction.witnessesAsString()
+    tx.description = '' // tx desc is saved in leveldb as wallet property
     // update tx status here
     tx.status = outputStatus === OutputStatus.Sent ? TransactionStatus.Pending : TransactionStatus.Success
     tx.inputs = []
@@ -158,8 +222,23 @@ export class TransactionPersistor {
       input.transaction = tx
       input.capacity = i.capacity || null
       input.lockHash = i.lockHash || null
-      input.lock = i.lock || null
+      // input.lock = i.lock || null
+      if (i.lock) {
+        input.lockCodeHash = i.lock.codeHash
+        input.lockArgs = i.lock.args
+        input.lockHashType = i.lock.hashType
+      }
+      if (i.type) {
+        input.typeCodeHash = i.type?.codeHash
+        input.typeArgs = i.type?.args
+        input.typeHashType = i.type?.hashType
+        input.typeHash = i.typeHash || null
+      }
+      if (i.data) {
+        input.data = i.data.slice(0, 130)
+      }
       input.since = i.since!
+      input.multiSignBlake160 = i.multiSignBlake160 || null
       if (i.inputIndex) {
         input.inputIndex = i.inputIndex
       }
@@ -180,20 +259,26 @@ export class TransactionPersistor {
     }
 
     const outputsData = transaction.outputsData!
-    const outputs: OutputEntity[] = transaction.outputs!.map((o, index) => {
+    const outputs: OutputEntity[] = transaction.outputs.map((o, index) => {
       const output = new OutputEntity()
-      output.outPointTxHash = transaction.hash
+      output.outPointTxHash = transaction.hash || transaction.computeHash()
       output.outPointIndex = index.toString()
       output.capacity = o.capacity
-      output.lock = o.lock
+      output.lockCodeHash = o.lock.codeHash
+      output.lockArgs = o.lock.args
+      output.lockHashType = o.lock.hashType
       output.lockHash = o.lockHash!
       output.transaction = tx
       output.status = outputStatus
+      output.multiSignBlake160 = o.multiSignBlake160 || null
       if (o.type) {
-        output.typeScript = o.type
-        output.typeHash = o.typeHash ? o.typeHash : null
+        output.typeCodeHash = o.type.codeHash
+        output.typeArgs = o.type.args
+        output.typeHashType = o.type.hashType
+        output.typeHash = o.typeHash || null
       }
       const data = outputsData[index]
+      output.data = data.slice(0, 130)
       if (data && data !== '0x') {
         output.hasData = true
       } else {
@@ -215,18 +300,20 @@ export class TransactionPersistor {
     await queryRunner.startTransaction()
     try {
       await queryRunner.manager.save(tx)
-      for (const slice of Utils.eachSlice(inputs, sliceSize)) {
+      for (const slice of ArrayUtils.eachSlice(inputs, sliceSize)) {
         await queryRunner.manager.save(slice)
       }
-      for (const slice of Utils.eachSlice(previousOutputs, sliceSize)) {
+      for (const slice of ArrayUtils.eachSlice(previousOutputs, sliceSize)) {
         await queryRunner.manager.save(slice)
       }
-      for (const slice of Utils.eachSlice(outputs, sliceSize)) {
+      for (const slice of ArrayUtils.eachSlice(outputs, sliceSize)) {
         await queryRunner.manager.save(slice)
       }
       await queryRunner.commitTransaction();
     } catch (err) {
+      logger.error('Database:\tcreate transaction error:', err)
       await queryRunner.rollbackTransaction()
+      throw err
     } finally {
       await queryRunner.release()
     }
@@ -240,24 +327,9 @@ export class TransactionPersistor {
     while (queryRunner.isTransactionActive) {
       const now: number = +new Date()
       if (now - startAt < timeout) {
-        await Utils.sleep(50)
+        await CommonUtils.sleep(50)
       }
     }
-  }
-
-  public static deleteWhenFork = async (blockNumber: string) => {
-    const txs = await getConnection()
-      .getRepository(TransactionEntity)
-      .createQueryBuilder('tx')
-      .where(
-        'CAST(tx.blockNumber AS UNSIGNED BIG INT) > CAST(:blockNumber AS UNSIGNED BIG INT) AND tx.status = :status',
-        {
-          blockNumber,
-          status: TransactionStatus.Success,
-        }
-      )
-      .getMany()
-    return getConnection().manager.remove(txs)
   }
 
   // update previousOutput's status to 'dead' if found
@@ -269,13 +341,6 @@ export class TransactionPersistor {
     saveType: TxSaveType
   ): Promise<TransactionEntity> => {
     const tx: Transaction = transaction
-    tx.outputs = tx.outputs!.map(o => {
-      const output = o
-      if (!output.lockHash) {
-        output.lockHash = LockUtils.lockScriptToHash(output.lock!)
-      }
-      return output
-    })
 
     let txEntity: TransactionEntity
     if (saveType === TxSaveType.Sent) {
@@ -296,19 +361,14 @@ export class TransactionPersistor {
     return txEntity
   }
 
-  public static get = async (txHash: string) => {
-    return await getConnection().getRepository(TransactionEntity)
-      .findOne(txHash, { relations: ['inputs'] })
-  }
-
   public static saveSentTx = async (
-    transaction: TransactionWithoutHash,
+    transaction: Transaction,
     txHash: string
   ): Promise<TransactionEntity> => {
-    const tx: Transaction = {
-      hash: txHash,
+    const tx = Transaction.fromObject({
       ...transaction,
-    }
+      hash: txHash,
+    })
     const txEntity: TransactionEntity = await TransactionPersistor.convertTransactionAndSave(tx, TxSaveType.Sent)
     return txEntity
   }

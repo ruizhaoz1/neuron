@@ -1,17 +1,24 @@
-import React, { useContext, useCallback, useState } from 'react'
+import React, { useCallback, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Stack, PrimaryButton, Button, Spinner, Text, ProgressIndicator } from 'office-ui-fabric-react'
-import { NeuronWalletContext } from 'states/stateProvider'
-import { StateWithDispatch } from 'states/stateProvider/reducer'
-import { addPopup } from 'states/stateProvider/actionCreators'
-import { checkForUpdates, downloadUpdate, installUpdate, clearCellCache } from 'services/remote'
-import { releaseNotesStyle } from './style.module.scss'
+import { ProgressIndicator } from 'office-ui-fabric-react'
+import ClearCache from 'components/ClearCache'
+import Button from 'widgets/Button'
+import Spinner from 'widgets/Spinner'
+import Dropdown from 'widgets/Dropdown'
+import { StateDispatch } from 'states'
+import { checkForUpdates, downloadUpdate, installUpdate, setLocale, getVersion } from 'services/remote'
+import { CONSTANTS } from 'utils'
 
-const UpdateDownloadStatus = ({
-  progress = 0,
-  newVersion = '',
-  releaseNotes = '',
-}: React.PropsWithoutRef<{ progress: number; newVersion: string; releaseNotes: string }>) => {
+import styles from './style.module.scss'
+
+const { LOCALES } = CONSTANTS
+interface UpdateDowloadStatusProps {
+  progress: number
+  newVersion: string
+  releaseNotes: string
+}
+
+const UpdateDownloadStatus = ({ progress = 0, newVersion = '', releaseNotes = '' }: UpdateDowloadStatusProps) => {
   const [t] = useTranslation()
   const available = newVersion !== '' && progress < 0
   const downloaded = progress >= 1
@@ -28,28 +35,15 @@ const UpdateDownloadStatus = ({
     /* eslint-disable react/no-danger */
 
     return (
-      <Stack>
-        <Text as="p" variant="medium">
-          {t('updates.updates-found-do-you-want-to-update', { version: newVersion })}
-        </Text>
-        <h3>{t('updates.release-notes')}</h3>
-        <div className={releaseNotesStyle}>
+      <div className={styles.install}>
+        <div>{t('updates.updates-found-do-you-want-to-update', { version: newVersion })}</div>
+        <div>
+          <Button type="primary" onClick={download} disabled={!available} label={t('updates.download-update')} />
+        </div>
+        <div className={styles.releaseNotesStyle}>
           <div dangerouslySetInnerHTML={releaseNotesHtml()} />
         </div>
-        <Stack horizontal horizontalAlign="start">
-          <PrimaryButton
-            onClick={download}
-            disabled={!available}
-            styles={{
-              root: {
-                minWidth: 180,
-              },
-            }}
-          >
-            {t('updates.download-update')}
-          </PrimaryButton>
-        </Stack>
-      </Stack>
+      </div>
     )
   }
 
@@ -59,75 +53,58 @@ const UpdateDownloadStatus = ({
     }
 
     return (
-      <Stack>
-        <Text as="p" variant="medium">
-          {t('updates.updates-downloaded-about-to-quit-and-install')}
-        </Text>
-        <Stack horizontal horizontalAlign="start">
-          <PrimaryButton
+      <div className={styles.install}>
+        <div>{t('updates.updates-downloaded-about-to-quit-and-install')}</div>
+        <div>
+          <Button
+            type="primary"
             onClick={quitAndInstall}
             disabled={!downloaded}
-            styles={{
-              root: {
-                minWidth: 180,
-              },
-            }}
-          >
-            {t('updates.quit-and-install')}
-          </PrimaryButton>
-        </Stack>
-      </Stack>
+            label={t('updates.quit-and-install')}
+          />
+        </div>
+      </div>
     )
   }
 
-  return (
-    <ProgressIndicator
-      percentComplete={progress}
-      label={t('updates.downloading-update')}
-      styles={{ root: { width: '250px' } }}
-    />
-  )
+  return <ProgressIndicator percentComplete={progress} label={t('updates.downloading-update')} />
 }
 
-const GeneralSetting = ({ dispatch }: React.PropsWithoutRef<StateWithDispatch>) => {
-  const [t] = useTranslation()
-  const { updater } = useContext(NeuronWalletContext)
-  const [clearingCache, setClearingCache] = useState(false)
+interface GeneralSettingProps {
+  updater: State.AppUpdater
+  dispatch: StateDispatch
+}
+
+const GeneralSetting = ({ updater, dispatch }: GeneralSettingProps) => {
+  const [t, i18n] = useTranslation()
+  const [lng, setLng] = useState(i18n.language)
 
   const checkUpdates = useCallback(() => {
     checkForUpdates()
   }, [])
 
-  const clearCache = useCallback(() => {
-    setClearingCache(true)
-    setTimeout(() => {
-      clearCellCache().finally(() => {
-        addPopup('clear-cache-successfully')(dispatch)
-        setClearingCache(false)
-      })
-    }, 100)
-  }, [dispatch])
+  const onApplyLanguage = useCallback(() => {
+    setLocale(lng as typeof LOCALES[number])
+  }, [lng])
+
+  const version = useMemo(() => {
+    return getVersion()
+  }, [])
+
+  const showNewVersion = updater.version !== '' || updater.downloadProgress >= 0
 
   return (
-    <Stack tokens={{ childrenGap: 25 }}>
-      <Stack>
-        <Stack horizontal horizontalAlign="start">
-          {updater.version !== '' || updater.downloadProgress >= 0 ? (
-            <UpdateDownloadStatus
-              progress={updater.downloadProgress}
-              newVersion={updater.version}
-              releaseNotes={updater.releaseNotes}
-            />
-          ) : (
+    <div className={styles.container}>
+      <div className={`${styles.version} ${styles.label}`}>{t('settings.general.version')}</div>
+      {showNewVersion ? null : (
+        <>
+          <div className={`${styles.version} ${styles.value}`}>{version}</div>
+          <div className={`${styles.version} ${styles.action}`}>
             <Button
+              label={t(`updates.${updater.checking ? 'checking-updates' : 'check-updates'}`)}
+              type="default"
               onClick={checkUpdates}
               disabled={updater.checking}
-              ariaDescription="Check updates"
-              styles={{
-                root: {
-                  minWidth: 180,
-                },
-              }}
             >
               {updater.checking ? (
                 <Spinner
@@ -136,41 +113,38 @@ const GeneralSetting = ({ dispatch }: React.PropsWithoutRef<StateWithDispatch>) 
                   labelPosition="right"
                 />
               ) : (
-                t('updates.check-updates')
+                (t('updates.check-updates') as string)
               )}
             </Button>
-          )}
-        </Stack>
-      </Stack>
-
-      <Stack>
-        <Text as="p" variant="medium">
-          {t('settings.general.clear-cache-description')}
-        </Text>
-        <Stack horizontal horizontalAlign="start">
-          <Button
-            onClick={clearCache}
-            disabled={clearingCache}
-            ariaDescription="Clear cache"
-            styles={{
-              root: {
-                minWidth: 180,
-              },
-            }}
-          >
-            {clearingCache ? (
-              <Spinner
-                styles={{ root: { marginRight: 5 } }}
-                label={t('settings.general.clearing-cache')}
-                labelPosition="right"
-              />
-            ) : (
-              t('settings.general.clear-cache')
-            )}
-          </Button>
-        </Stack>
-      </Stack>
-    </Stack>
+          </div>
+        </>
+      )}
+      <div className={styles.newVersion}>
+        {showNewVersion ? (
+          <UpdateDownloadStatus
+            progress={updater.downloadProgress}
+            newVersion={updater.version}
+            releaseNotes={updater.releaseNotes}
+          />
+        ) : null}
+      </div>
+      <ClearCache dispatch={dispatch} />
+      <div className={`${styles.language} ${styles.label}`}>{t('settings.general.language')}</div>
+      <div className={`${styles.language} ${styles.select}`}>
+        <Dropdown
+          options={LOCALES.map(locale => ({ key: locale, text: t(`settings.locale.${locale}`) }))}
+          selectedKey={lng}
+          onChange={(_, item) => {
+            if (item) {
+              setLng(item.key as typeof LOCALES[number])
+            }
+          }}
+        />
+      </div>
+      <div className={`${styles.language} ${styles.action}`}>
+        <Button label={t('settings.general.apply')} onClick={onApplyLanguage} disabled={lng === i18n.language} />
+      </div>
+    </div>
   )
 }
 

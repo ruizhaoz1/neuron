@@ -1,48 +1,62 @@
-import React from 'react'
-import { RouteComponentProps } from 'react-router-dom'
+import React, { useMemo, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Stack,
-  Label,
-  Text,
-  List,
-  TextField,
-  PrimaryButton,
-  DefaultButton,
-  IconButton,
-  Spinner,
-  Separator,
-} from 'office-ui-fabric-react'
-
+import { List } from 'office-ui-fabric-react'
+import { ckbCore } from 'services/chain'
 import TransactionFeePanel from 'components/TransactionFeePanel'
-import QRScanner from 'widgets/QRScanner'
+import TextField from 'widgets/TextField'
+import Button from 'widgets/Button'
+import Spinner from 'widgets/Spinner'
+import { ReactComponent as Scan } from 'widgets/Icons/Scan.svg'
+import AddOutput from 'widgets/Icons/AddOutput.png'
+import RemoveOutput from 'widgets/Icons/RemoveOutput.png'
+import Edit from 'widgets/Icons/Edit.png'
+import ActiveEdit from 'widgets/Icons/ActiveEdit.png'
+import Trash from 'widgets/Icons/Trash.png'
+import ActiveTrash from 'widgets/Icons/ActiveTrash.png'
+import Calendar from 'widgets/Icons/Calendar.png'
+import ActiveCalendar from 'widgets/Icons/ActiveCalendar.png'
+import { ReactComponent as Attention } from 'widgets/Icons/Attention.svg'
+import BalanceSyncIcon from 'components/BalanceSyncingIcon'
+import CopyZone from 'widgets/CopyZone'
 
-import { StateWithDispatch } from 'states/stateProvider/reducer'
-import appState from 'states/initStates/app'
+import { useState as useGlobalState, useDispatch, appState } from 'states'
 
-import { PlaceHolders, CapacityUnit, ErrorCode, MAINNET_TAG } from 'utils/const'
-import { shannonToCKBFormatter } from 'utils/formatters'
+import {
+  PlaceHolders,
+  CONSTANTS,
+  shannonToCKBFormatter,
+  localNumberFormatter,
+  getCurrentUrl,
+  getSyncStatus,
+  validateOutputs,
+  validateAmount,
+  validateAmountRange,
+  validateAddress,
+  validateTotalAmount,
+  isMainnet as isMainnetUtil,
+} from 'utils'
 
-import { verifyTotalAmount, verifyTransactionOutputs } from 'utils/validators'
+import DatetimePicker, { formatDate } from 'widgets/DatetimePicker'
 import { useInitialize } from './hooks'
+import styles from './send.module.scss'
 
-export interface TransactionOutput {
-  address: string
-  amount: string
-  unit: CapacityUnit
-}
+const { SINCE_FIELD_SIZE } = CONSTANTS
 
-const Send = ({
-  app: {
-    send = appState.send,
-    loadings: { sending = false },
-  },
-  wallet: { id: walletID = '', balance = '' },
-  chain: { networkID, connectionStatus },
-  settings: { networks = [] },
-  dispatch,
-}: React.PropsWithoutRef<StateWithDispatch & RouteComponentProps<{ address: string }>>) => {
+const Send = () => {
+  const {
+    app: {
+      send = appState.send,
+      loadings: { sending = false },
+      tipBlockNumber,
+      tipBlockTimestamp,
+    },
+    wallet: { id: walletID = '', balance = '' },
+    chain: { networkID, connectionStatus, tipBlockNumber: syncedBlockNumber },
+    settings: { networks = [] },
+  } = useGlobalState()
+  const dispatch = useDispatch()
   const { t } = useTranslation()
+  const isMainnet = isMainnetUtil(networks, networkID)
   const {
     outputs,
     fee,
@@ -51,216 +65,324 @@ const Send = ({
     useOnTransactionChange,
     onItemChange,
     onSubmit,
+    updateTransactionOutput,
     addTransactionOutput,
     removeTransactionOutput,
     updateTransactionPrice,
     onDescriptionChange,
-    onGetAddressErrorMessage,
-    onGetAmountErrorMessage,
     onClear,
     errorMessage,
     setErrorMessage,
     isSendMax,
     onSendMaxClick,
-  } = useInitialize(walletID, send.outputs, send.generatedTx, send.price, sending, dispatch, t)
-  useOnTransactionChange(walletID, outputs, send.price, dispatch, isSendMax, setTotalAmount, setErrorMessage)
-  const leftStackWidth = '70%'
-  const labelWidth = '140px'
+    onScan,
+  } = useInitialize(walletID, send.outputs, send.generatedTx, send.price, sending, isMainnet, dispatch, t)
 
-  const errorMessageUnderTotal = verifyTotalAmount(totalAmount, fee, balance)
-    ? errorMessage
-    : t(`messages.codes.${ErrorCode.AmountNotEnough}`)
-  const network = networks.find(n => n.id === networkID)
-  const isMainnet = (network && network.chain === MAINNET_TAG) || false
+  const [locktimeIndex, setLocktimeIndex] = useState<number>(-1)
+
+  const onLocktimeClick = useCallback(
+    e => {
+      const {
+        dataset: { index },
+      } = e.target
+      setLocktimeIndex(index)
+    },
+    [setLocktimeIndex]
+  )
+
+  const onRemoveLocktime = useCallback(
+    e => {
+      const {
+        dataset: { index },
+      } = e.target
+      updateTransactionOutput('date')(index)(undefined)
+    },
+    [updateTransactionOutput]
+  )
+
+  useOnTransactionChange(
+    walletID,
+    outputs,
+    send.price,
+    isMainnet,
+    dispatch,
+    isSendMax,
+    setTotalAmount,
+    setErrorMessage,
+    t
+  )
+
+  let errorMessageUnderTotal = errorMessage
+  try {
+    validateTotalAmount(totalAmount, fee, balance)
+  } catch (err) {
+    errorMessageUnderTotal = t(err.message)
+  }
+
+  const disabled = connectionStatus === 'offline' || sending || !!errorMessageUnderTotal || !send.generatedTx
+
+  const syncStatus = getSyncStatus({
+    tipBlockNumber,
+    syncedBlockNumber,
+    tipBlockTimestamp,
+    currentTimestamp: Date.now(),
+    url: getCurrentUrl(networkID, networks),
+  })
+
+  const outputErrors = useMemo(() => {
+    return outputs.map(({ address, amount, date }) => {
+      let amountError: (Error & { i18n: { [key: string]: string } }) | undefined
+      let addrError: (Error & { i18n: { [key: string]: string } }) | undefined
+
+      if (amount !== undefined) {
+        try {
+          const extraSize = date ? SINCE_FIELD_SIZE : 0
+          validateAmount(amount)
+          validateAmountRange(amount, extraSize)
+        } catch (err) {
+          amountError = err
+        }
+      }
+
+      if (address !== undefined) {
+        try {
+          validateAddress(address, isMainnet)
+        } catch (err) {
+          addrError = err
+        }
+      }
+
+      return {
+        addrError,
+        amountError,
+      }
+    })
+  }, [outputs, isMainnet])
 
   return (
-    <Stack verticalFill tokens={{ childrenGap: 15, padding: '20px 0 0 0' }}>
-      <Stack.Item>
+    <form onSubmit={onSubmit} data-wallet-id={walletID} data-status={disabled ? 'not-ready' : 'ready'}>
+      <h1 className={styles.pageTitle}>{t('navbar.send')}</h1>
+      <div className={styles.balance}>
+        <span>{`${t('overview.balance')}:`}</span>
+        <CopyZone content={shannonToCKBFormatter(balance, false, '')} name={t('overview.copy-balance')}>
+          <span className={styles.balanceValue}>{shannonToCKBFormatter(balance)}</span>
+        </CopyZone>
+        <BalanceSyncIcon connectionStatus={connectionStatus} syncStatus={syncStatus} />
+      </div>
+      <div>
         <List
           items={outputs}
           onRenderCell={(item, idx) => {
+            const SHORT_ADDR_LENGTH = 46
+            const LOCKTIMEABLE_PREFIX = '0x0100'
             if (undefined === item || undefined === idx) {
               return null
             }
+            const outputError = outputErrors[idx]
+
+            const amountErrorMsg = outputError.amountError
+              ? t(outputError.amountError.message, outputError.amountError.i18n)
+              : ''
+
+            const addrErrorMsg = outputError.addrError
+              ? t(outputError.addrError.message, outputError.addrError.i18n)
+              : ''
+
+            const fullAddrInfo =
+              !addrErrorMsg && item.address && item.address.length !== SHORT_ADDR_LENGTH
+                ? t('messages.full-addr-info')
+                : ''
+
+            let locktimeAble = false
+            if (!addrErrorMsg && item.address && item.address.length === SHORT_ADDR_LENGTH) {
+              try {
+                const parsed = ckbCore.utils.bytesToHex(ckbCore.utils.parseAddress(item.address))
+                if (parsed.startsWith(LOCKTIMEABLE_PREFIX)) {
+                  locktimeAble = true
+                }
+              } catch {
+                // ignore this
+              }
+            }
+
+            let isMaxBtnDisabled = false
+            let isAddOneBtnDisabled = false
+
+            try {
+              validateOutputs(outputs, isMainnet, true)
+            } catch {
+              isMaxBtnDisabled = true
+            }
+
+            try {
+              if (isSendMax) {
+                isAddOneBtnDisabled = true
+              } else {
+                validateOutputs(outputs, isMainnet, false)
+              }
+            } catch {
+              isAddOneBtnDisabled = true
+            }
+
             return (
-              <Stack tokens={{ childrenGap: 15 }}>
-                <Stack horizontal verticalAlign="end" horizontalAlign="space-between">
-                  <Stack
-                    horizontal
-                    verticalAlign="start"
-                    styles={{ root: { width: leftStackWidth } }}
-                    tokens={{ childrenGap: 20 }}
-                  >
-                    <Stack.Item styles={{ root: { width: labelWidth } }}>
-                      <Label>{t('send.address')}</Label>
-                    </Stack.Item>
-                    <Stack.Item styles={{ root: { flex: 1 } }}>
-                      <TextField
-                        data-field="address"
-                        data-idx={idx}
-                        disabled={item.disabled}
-                        value={item.address || ''}
-                        onChange={onItemChange}
-                        required
-                        validateOnLoad={false}
-                        onGetErrorMessage={onGetAddressErrorMessage(isMainnet)}
-                      />
-                    </Stack.Item>
-                    <Stack styles={{ root: { width: '48px' } }} verticalAlign="start">
-                      <QRScanner
-                        title={t('send.scan-to-get-address')}
-                        label={t('send.address')}
-                        onConfirm={(data: string) => {
-                          const e = { target: { dataset: { field: 'address', idx } } }
-                          onItemChange(e, data)
-                        }}
-                      />
-                    </Stack>
-                  </Stack>
+              <div className={styles.outputContainer}>
+                <TextField
+                  className={styles.addressField}
+                  label={t('send.address')}
+                  field="address"
+                  data-idx={idx}
+                  disabled={item.disabled}
+                  value={item.address || ''}
+                  onChange={onItemChange}
+                  required
+                  maxLength={100}
+                  error={addrErrorMsg}
+                  autoFocus
+                />
+                {fullAddrInfo ? (
+                  <div className={styles.fullAddrInfo}>
+                    <Attention />
+                    <span>{fullAddrInfo}</span>
+                  </div>
+                ) : null}
 
-                  <Stack.Item>
-                    {outputs.length > 1 ? (
-                      <IconButton
-                        disabled={isSendMax}
-                        iconProps={{ iconName: isSendMax ? 'DisabledRemove' : 'Remove' }}
-                        text={t('send.remove-this')}
-                        onClick={() => removeTransactionOutput(idx)}
-                      />
+                <TextField
+                  className={styles.amountField}
+                  label={t('send.amount')}
+                  field="amount"
+                  data-idx={idx}
+                  value={localNumberFormatter(item.amount)}
+                  placeholder={isSendMax ? PlaceHolders.send.Calculating : PlaceHolders.send.Amount}
+                  onChange={onItemChange}
+                  disabled={item.disabled}
+                  required
+                  suffix="CKB"
+                  error={amountErrorMsg}
+                />
+                <button
+                  data-idx={idx}
+                  style={styles && styles.trigger}
+                  onClick={onScan}
+                  type="button"
+                  aria-label="qr-btn"
+                  className={styles.scanBtn}
+                  data-title={t('send.scan-screen-qr-code')}
+                >
+                  <Scan />
+                </button>
+
+                {idx === outputs.length - 1 ? (
+                  <Button
+                    className={styles.maxBtn}
+                    type="primary"
+                    onClick={onSendMaxClick}
+                    disabled={isMaxBtnDisabled}
+                    label="Max"
+                    data-is-on={isSendMax}
+                  />
+                ) : null}
+
+                <div className={styles.iconBtns}>
+                  {outputs.length > 1 ? (
+                    <button
+                      type="button"
+                      disabled={isSendMax}
+                      aria-label={t('send.remove-this')}
+                      onClick={() => removeTransactionOutput(idx)}
+                      className={styles.iconBtn}
+                    >
+                      <img src={RemoveOutput} alt="Remove Output" data-type="remove" />
+                    </button>
+                  ) : null}
+                  {idx === outputs.length - 1 ? (
+                    <button
+                      type="button"
+                      disabled={isAddOneBtnDisabled}
+                      onClick={() => addTransactionOutput()}
+                      aria-label={t('send.add-one')}
+                      className={styles.iconBtn}
+                    >
+                      <img src={AddOutput} alt="Add Output" data-type="add" />
+                    </button>
+                  ) : null}
+                </div>
+                {locktimeAble ? (
+                  <div className={styles.locktime} data-status={item.date ? 'set' : 'unset'}>
+                    <img data-status="inactive" className={styles.icon} src={Calendar} alt="calendar" />
+                    <img data-status="active" className={styles.icon} src={ActiveCalendar} alt="active-calendar" />
+                    {item.date ? `${t('send.release-on')}: ${formatDate(new Date(+item.date))}` : null}
+                    <button type="button" data-index={idx} onClick={onLocktimeClick}>
+                      {item.date ? (
+                        <>
+                          <img data-status="inactive" className={styles.icon} src={Edit} alt="edit" />
+                          <img data-status="active" className={styles.icon} src={ActiveEdit} alt="active-edit" />
+                        </>
+                      ) : (
+                        t('send.set-locktime')
+                      )}
+                    </button>
+                    {item.date ? (
+                      <button type="button" data-index={idx} onClick={onRemoveLocktime}>
+                        <img data-status="inactive" className={styles.icon} src={Trash} alt="trash" />
+                        <img data-status="active" className={styles.icon} src={ActiveTrash} alt="active-trash" />
+                      </button>
                     ) : null}
-                  </Stack.Item>
-                </Stack>
-
-                <Stack horizontal verticalAlign="end" horizontalAlign="space-between">
-                  <Stack
-                    horizontal
-                    verticalAlign="start"
-                    styles={{ root: { width: leftStackWidth } }}
-                    tokens={{ childrenGap: 20 }}
-                  >
-                    <Stack.Item styles={{ root: { width: labelWidth } }}>
-                      <Label>{t('send.amount')}</Label>
-                    </Stack.Item>
-                    <Stack.Item styles={{ root: { flex: 1 } }}>
-                      <TextField
-                        data-field="amount"
-                        data-idx={idx}
-                        value={item.amount}
-                        placeholder={isSendMax ? PlaceHolders.send.Calculating : PlaceHolders.send.Amount}
-                        onChange={onItemChange}
-                        disabled={item.disabled}
-                        required
-                        validateOnLoad={false}
-                        onGetErrorMessage={onGetAmountErrorMessage}
-                      />
-                    </Stack.Item>
-                    <Stack.Item styles={{ root: { width: '43px', paddingLeft: '5px' } }}>
-                      <span>(CKB)</span>
-                    </Stack.Item>
-                  </Stack>
-
-                  <Stack.Item>
-                    {idx === outputs.length - 1 ? (
-                      <Stack horizontal>
-                        <DefaultButton
-                          onClick={onSendMaxClick}
-                          style={{
-                            boxShadow: isSendMax ? 'inset 0 0 5px #000' : 'none',
-                          }}
-                          disabled={!verifyTransactionOutputs(outputs, true)}
-                        >
-                          Max
-                        </DefaultButton>
-                        <IconButton
-                          disabled={!verifyTransactionOutputs(outputs, false) || isSendMax}
-                          iconProps={{
-                            iconName: !verifyTransactionOutputs(outputs, false) || isSendMax ? 'DisabledAdd' : 'Add',
-                          }}
-                          onClick={() => addTransactionOutput()}
-                          ariaLabel={t('send.add-one')}
-                        />
-                      </Stack>
-                    ) : null}
-                  </Stack.Item>
-                </Stack>
-                <Separator />
-              </Stack>
+                  </div>
+                ) : null}
+              </div>
             )
           }}
         />
-      </Stack.Item>
+      </div>
 
-      <Stack
-        verticalAlign="start"
-        horizontalAlign="space-between"
-        tokens={{ childrenGap: 20 }}
-        styles={{ root: { marginRight: '97px' } }}
-      >
-        <Stack
-          horizontal
-          verticalAlign="start"
-          styles={{
-            root: {
-              width: leftStackWidth,
-              display: outputs.length > 1 || errorMessageUnderTotal ? 'flex' : 'none',
-            },
-          }}
-          tokens={{ childrenGap: 20 }}
-        >
-          <Stack.Item styles={{ root: { width: labelWidth } }}>
-            <Label>{t('send.total-amount')}</Label>
-          </Stack.Item>
-          <Stack.Item styles={{ root: { flex: 1 } }}>
-            <TextField
-              id="total-amount"
-              alt={t('send.total-amount')}
-              value={`${shannonToCKBFormatter(totalAmount)} CKB`}
-              readOnly
-              errorMessage={errorMessageUnderTotal}
-            />
-          </Stack.Item>
-        </Stack>
-        <Stack horizontal verticalAlign="end" styles={{ root: { width: leftStackWidth } }} tokens={{ childrenGap: 20 }}>
-          <Stack.Item styles={{ root: { width: labelWidth } }}>
-            <Label>{t('send.description')}</Label>
-          </Stack.Item>
-          <Stack.Item styles={{ root: { flex: 1 } }}>
-            <TextField
-              id="description"
-              alt={t('send.description')}
-              value={send.description}
-              onChange={onDescriptionChange}
-            />
-          </Stack.Item>
-        </Stack>
-      </Stack>
-
-      <TransactionFeePanel fee={shannonToCKBFormatter(fee)} price={send.price} onPriceChange={updateTransactionPrice} />
-
-      <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 20 }}>
-        <Stack.Item styles={{ root: { width: labelWidth } }}>
-          <Label>{t('send.balance')}</Label>
-        </Stack.Item>
-        <Stack.Item>
-          <Text>{`${shannonToCKBFormatter(balance)} CKB`}</Text>
-        </Stack.Item>
-      </Stack>
-
-      <Stack horizontal horizontalAlign="end" tokens={{ childrenGap: 10 }}>
-        <DefaultButton type="reset" onClick={onClear} disabled={isSendMax}>
-          {t('send.clear')}
-        </DefaultButton>
-        {sending ? (
-          <Spinner />
-        ) : (
-          <PrimaryButton
-            type="submit"
-            onClick={onSubmit(walletID)}
-            disabled={connectionStatus === 'offline' || sending || !!errorMessageUnderTotal || !send.generatedTx}
-            text={t('send.send')}
+      <div className={styles.info}>
+        {outputs.length > 1 || errorMessageUnderTotal ? (
+          <TextField
+            field="totalAmount"
+            label={t('send.total-amount')}
+            value={`${shannonToCKBFormatter(totalAmount)} CKB`}
+            readOnly
+            error={errorMessageUnderTotal}
           />
-        )}
-      </Stack>
-    </Stack>
+        ) : null}
+        <TextField
+          field="description"
+          label={t('send.description')}
+          value={send.description}
+          onChange={onDescriptionChange}
+          disabled={sending}
+        />
+        <TransactionFeePanel
+          fee={shannonToCKBFormatter(fee)}
+          price={send.price}
+          onPriceChange={updateTransactionPrice}
+        />
+      </div>
+
+      <div className={styles.actions}>
+        <Button type="reset" onClick={onClear} label={t('send.clear')} />
+        <Button type="submit" disabled={disabled} label={t('send.send')}>
+          {sending ? <Spinner /> : (t('send.send') as string)}
+        </Button>
+      </div>
+
+      {locktimeIndex > -1 ? (
+        <div className={styles.datetimePicker}>
+          <div className={styles.datetimeDialog}>
+            <DatetimePicker
+              onConfirm={(time: number) => {
+                updateTransactionOutput('date')(locktimeIndex)(`${time}`)
+                setLocktimeIndex(-1)
+              }}
+              preset={send.outputs[locktimeIndex]?.date}
+              onCancel={() => setLocktimeIndex(-1)}
+              title={t('send.set-locktime')}
+              notice={t('send.locktime-notice-content')}
+            />
+          </div>
+        </div>
+      ) : null}
+    </form>
   )
 }
 

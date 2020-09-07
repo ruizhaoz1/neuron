@@ -1,6 +1,8 @@
 import { Entity, BaseEntity, Column, PrimaryColumn, ManyToOne } from 'typeorm'
-import { Script, OutPoint, Cell } from 'types/cell-types'
 import TransactionEntity from './transaction'
+import Script, { ScriptHashType } from 'models/chain/script'
+import OutPoint from 'models/chain/out-point'
+import OutputModel, { OutputStatus } from 'models/chain/output'
 
 @Entity()
 export default class Output extends BaseEntity {
@@ -20,9 +22,19 @@ export default class Output extends BaseEntity {
   capacity!: string
 
   @Column({
-    type: 'simple-json',
+    type: 'varchar',
   })
-  lock!: Script
+  lockCodeHash!: string
+
+  @Column({
+    type: 'varchar',
+  })
+  lockArgs!: string
+
+  @Column({
+    type: 'varchar',
+  })
+  lockHashType!: ScriptHashType
 
   @Column({
     type: 'varchar',
@@ -35,16 +47,35 @@ export default class Output extends BaseEntity {
   status!: string
 
   @Column({
-    type: 'simple-json',
+    type: 'varchar',
     nullable: true,
   })
-  typeScript: Script | null = null
+  typeCodeHash: string | null = null
+
+  @Column({
+    type: 'varchar',
+    nullable: true,
+  })
+  typeArgs: string | null = null
+
+  @Column({
+    type: 'varchar',
+    nullable: true,
+  })
+  typeHashType: ScriptHashType | null = null
 
   @Column({
     type: 'varchar',
     nullable: true,
   })
   typeHash: string | null = null
+
+  // only first 130 chars
+  @Column({
+    type: 'varchar',
+    default: '0x',
+  })
+  data: string = '0x'
 
   @Column({
     type: 'varchar',
@@ -69,19 +100,36 @@ export default class Output extends BaseEntity {
   })
   depositIndex: string | null = null
 
+  @Column({
+    type: 'varchar',
+    nullable: true,
+  })
+  multiSignBlake160: string | null = null
+
   public outPoint(): OutPoint {
-    return {
-      txHash: this.outPointTxHash,
-      index: this.outPointIndex,
-    }
+    return new OutPoint(
+      this.outPointTxHash,
+      this.outPointIndex,
+    )
   }
 
   public depositOutPoint(): OutPoint | undefined {
     if (this.depositTxHash && this.depositIndex) {
-      return {
-        txHash: this.depositTxHash,
-        index: this.depositIndex
-      }
+      return new OutPoint(
+        this.depositTxHash,
+        this.depositIndex
+      )
+    }
+    return undefined
+  }
+
+  public lockScript(): Script {
+    return new Script(this.lockCodeHash, this.lockArgs, this.lockHashType)
+  }
+
+  public typeScript(): Script | undefined {
+    if (this.typeCodeHash && this.typeArgs && this.typeHashType) {
+      return new Script(this.typeCodeHash, this.typeArgs, this.typeHashType)
     }
     return undefined
   }
@@ -89,23 +137,23 @@ export default class Output extends BaseEntity {
   @ManyToOne(_type => TransactionEntity, transaction => transaction.outputs, { onDelete: 'CASCADE' })
   transaction!: TransactionEntity
 
-  public toInterface(): Cell {
-    const timestamp = this.transaction && (this.transaction.timestamp || this.transaction.createdAt)
-    const blockNumber = this.transaction && this.transaction.blockNumber
-    const blockHash = this.transaction && this.transaction.blockHash
-    return {
+  public toModel(): OutputModel {
+    const timestamp = this.transaction?.timestamp || this.transaction?.createdAt
+
+    return OutputModel.fromObject({
       capacity: this.capacity,
-      lock: this.lock,
+      lock: this.lockScript(),
       lockHash: this.lockHash,
       outPoint: this.outPoint(),
-      status: this.status,
-      type: this.typeScript,
-      typeHash: this.typeHash,
+      status: this.status as OutputStatus,
+      type: this.typeScript(),
+      typeHash: this.typeHash ? this.typeHash : undefined,
       daoData: this.daoData,
       timestamp,
-      blockNumber,
-      blockHash,
+      blockNumber: this.transaction?.blockNumber,
+      blockHash: this.transaction?.blockHash,
       depositOutPoint: this.depositOutPoint(),
-    }
+      multiSignBlake160: this.multiSignBlake160,
+    })
   }
 }

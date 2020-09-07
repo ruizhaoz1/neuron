@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { updateTransactionList } from 'states/stateProvider/actionCreators/transactions'
-import { queryParsers } from 'utils/parsers'
-import { backToTop } from 'utils/animations'
+import { queryParsers, backToTop } from 'utils'
 
 export const useSearch = (search: string = '', walletID: string = '', dispatch: React.Dispatch<any>) => {
   const [keywords, setKeywords] = useState('')
@@ -14,7 +13,7 @@ export const useSearch = (search: string = '', walletID: string = '', dispatch: 
 
   useEffect(() => {
     backToTop()
-    const params = queryParsers.history(search)
+    const params = queryParsers.listParams(search)
     setKeywords(params.keywords)
     updateTransactionList({ ...params, keywords: params.keywords, walletID })(dispatch)
   }, [search, walletID, dispatch])

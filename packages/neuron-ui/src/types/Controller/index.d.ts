@@ -3,6 +3,11 @@ declare namespace Controller {
     url: string
     title: string
   }
+
+  interface ShowSettingsParams {
+    tab: 'general' | 'wallets' | 'networks'
+  }
+
   interface CreateWalletParams {
     name: string
     mnemonic: string
@@ -89,6 +94,7 @@ declare namespace Controller {
   }
 
   interface UpdateTransactionDescriptionParams {
+    walletID: string
     hash: string
     description: string
   }
@@ -127,5 +133,169 @@ declare namespace Controller {
       index: string
     }
     feeRate: string
+  }
+
+  interface SignMessageParams {
+    walletID: string
+    address: string
+    password: string
+    message: string
+  }
+
+  interface VerifyMessageParams {
+    address: string
+    signature: string
+    message: string
+  }
+  // Special Assets
+  interface GetSpeicalAssetsParams {
+    walletID: string
+    pageNo: number
+    pageSize: number
+  }
+  interface UnlockSpecialAssetParams {
+    walletID: string
+    outPoint: {
+      txHash: string
+      index: string
+    }
+    feeRate: string
+    customizedAssetInfo: {
+      lock: string
+      type: string
+      data: string
+    }
+  }
+  /**
+   * sUDT related API
+   */
+  namespace GetScript {
+    interface Response {
+      cellDep: any
+      codeHash: string
+      hashType: 'data' | 'type'
+    }
+  }
+  interface SUDTAccount {
+    public id?: number
+    public walletID: string
+    public tokenID: string
+    public symbol: string
+    public accountName: string
+    public tokenName: string
+    public decimal: string
+    public balance: string
+    public blake160: string
+    public address: string
+  }
+
+  namespace GetSUDTAccount {
+    interface Params {
+      walletID: string
+      id: string
+    }
+    type Response = SUDTAccount
+  }
+
+  namespace GetSUDTAccountList {
+    interface Params {
+      walletID: string
+    }
+
+    type Response = SUDTAccount[]
+  }
+
+  namespace GenerateCreateSUDTAccountTransaction {
+    interface Params {
+      walletID: string
+      tokenID: string
+      tokenName: string
+      accountName: string
+      symbol: string
+      decimal: string
+      feeRate: string
+    }
+    interface Response {
+      assetAccount: any
+      tx: any
+    }
+  }
+
+  namespace SendCreateSUDTAccountTransaction {
+    interface Params {
+      walletID: string
+      assetAccount: Pick<SUDTAccount, 'symbol' | 'tokenName' | 'accountName' | 'decimal' | 'tokenID'>
+      tx: any
+      password: string
+    }
+  }
+
+  namespace UpdateSUDTAccount {
+    interface Params {
+      id: number
+      tokenName?: string
+      accountName?: string
+      symbol?: string
+      decimal?: string
+    }
+  }
+
+  namespace GenerateSUDTTransaction {
+    type SerializedTx = any
+    interface Params {
+      assetAccountID: string
+      walletID: string
+      address: string
+      amount: string
+      feeRate: string
+      description?: string
+    }
+
+    type Response = SerializedTx
+  }
+
+  namespace GenerateSendAllSUDTTransaction {
+    type SerializedTx = string
+    interface Params {
+      assetAccountID: string
+      walletID: string
+      address: string
+      feeRate: string
+      description?: string
+    }
+    type Response = SerializedTx
+  }
+
+  namespace SendSUDTTransaction {
+    type Hash = string
+    interface Params {
+      walletID: string
+      tx: any
+      password: string
+    }
+    type Response = Hash
+  }
+
+  namespace ExportTransactions {
+    interface Params {
+      walletID: string
+    }
+  }
+
+  namespace GetTokenInfoList {
+    interface TokenInfo {
+      tokenID: string
+      symbol: string
+      tokenName: string
+      decimal: string
+    }
+    type Response = TokenInfo[]
+  }
+
+  namespace ClearCache {
+    interface Params {
+      resetIndexerData: boolean
+    }
+    type Response = boolean
   }
 }

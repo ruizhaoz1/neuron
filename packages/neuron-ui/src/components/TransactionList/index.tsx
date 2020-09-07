@@ -1,54 +1,52 @@
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useState } from 'react'
+import { clipboard } from 'electron'
 import { useTranslation } from 'react-i18next'
+import { Icon } from 'office-ui-fabric-react'
+import { ReactComponent as Detail } from 'widgets/Icons/Detail.svg'
+import TextField from 'widgets/TextField'
+import { ReactComponent as CKBAvatar } from 'widgets/Icons/Nervos.svg'
+import { ReactComponent as Success } from 'widgets/Icons/Success.svg'
+import { ReactComponent as Pending } from 'widgets/Icons/Pending.svg'
+import { ReactComponent as Failure } from 'widgets/Icons/Failure.svg'
+import CopyZone from 'widgets/CopyZone'
+import SUDTAvatar from 'widgets/SUDTAvatar'
+
 import {
-  ShimmeredDetailsList,
-  TextField,
-  IconButton,
-  IColumn,
-  IGroup,
-  CheckboxVisibility,
-  CollapseAllVisibility,
-  getTheme,
-} from 'office-ui-fabric-react'
-
-import GroupHeader from 'components/CustomRows/GroupHeader'
-import HistoryRow from 'components/CustomRows/HistoryRow'
-
-import { StateDispatch } from 'states/stateProvider/reducer'
-import { showTransactionDetails, openContextMenu, openExternal } from 'services/remote'
-
-import { useLocalDescription } from 'utils/hooks'
-import {
+  CONSTANTS,
   shannonToCKBFormatter,
   uniformTimeFormatter as timeFormatter,
-  uniformTimeFormatter,
   localNumberFormatter,
-} from 'utils/formatters'
-import getExplorerUrl from 'utils/getExplorerUrl'
-import { CONFIRMATION_THRESHOLD } from 'utils/const'
+  sudtValueToAmount,
+  sUDTAmountFormatter,
+  getExplorerUrl,
+  useLocalDescription,
+} from 'utils'
+import { StateDispatch } from 'states'
+import { showTransactionDetails, openContextMenu, openExternal } from 'services/remote'
 
-const theme = getTheme()
-const { semanticColors } = theme
+import styles from './transactionList.module.scss'
 
-interface FormatTransaction extends State.Transaction {
-  date: string
-}
+const { CONFIRMATION_THRESHOLD, DEFAULT_SUDT_FIELDS } = CONSTANTS
 
-const TransactionList = ({
-  isLoading = false,
-  items = [],
-  walletID,
-  tipBlockNumber,
-  isMainnet,
-  dispatch,
-}: {
+interface TransactionListProps {
   isLoading?: boolean
+  walletName: string
   walletID: string
   items: State.Transaction[]
   tipBlockNumber: string
   isMainnet: boolean
   dispatch: StateDispatch
-}) => {
+}
+
+const TransactionList = ({
+  items: txs,
+  tipBlockNumber,
+  walletID,
+  walletName,
+  isMainnet,
+  dispatch,
+}: TransactionListProps) => {
+  const [txHash, setTxHash] = useState('')
   const [t] = useTranslation()
 
   const {
@@ -59,249 +57,222 @@ const TransactionList = ({
     onDescriptionSelected,
   } = useLocalDescription('transaction', walletID, dispatch)
 
-  const transactionColumns: IColumn[] = useMemo(
-    (): IColumn[] =>
-      [
-        {
-          name: t('history.type'),
-          key: 'type',
-          fieldName: 'type',
-          minWidth: 70,
-          maxWidth: 70,
-          onRender: (item?: FormatTransaction) => {
-            if (!item) {
-              return null
-            }
-            const type = t(`history.${item.type}`)
-            return <span title={type}>{type}</span>
-          },
-        },
-        {
-          name: t('history.timestamp'),
-          key: 'timestamp',
-          fieldName: 'timestamp',
-          minWidth: 80,
-          maxWidth: 80,
-          onRender: (item?: FormatTransaction) => {
-            if (!item) {
-              return null
-            }
-            const time = uniformTimeFormatter(item.timestamp || item.createdAt).split(' ')[1]
-            return <span title={time}>{time}</span>
-          },
-        },
-        {
-          name: t('history.transaction-hash'),
-          key: 'hash',
-          fieldName: 'hash',
-          minWidth: 150,
-          maxWidth: 150,
-          onRender: (item?: FormatTransaction) => {
-            if (!item) {
-              return '-'
-            }
-            return (
-              <span className="textOverflow monospacedFont" title={item.hash}>
-                {`${item.hash.slice(0, 8)}...${item.hash.slice(-6)}`}
-              </span>
-            )
-          },
-        },
-        {
-          name: t('history.confirmations'),
-          key: 'confirmation',
-          minWidth: 100,
-          maxWidth: +tipBlockNumber > 1e12 ? undefined : 150,
-          onRender: (item?: FormatTransaction) => {
-            if (!item || item.status !== 'success') {
-              return null
-            }
-            const confirmationCount = 1 + +tipBlockNumber - +item.blockNumber
-            if (confirmationCount < CONFIRMATION_THRESHOLD) {
-              return t(`history.confirming-with-count`, {
-                confirmations: `${Math.max(0, confirmationCount)}/${CONFIRMATION_THRESHOLD}`,
-              })
-            }
-            const confirmations = localNumberFormatter(confirmationCount)
-            return (
-              <span title={`${confirmations}`} className="textOverflow">
-                {confirmations}
-              </span>
-            )
-          },
-        },
-        {
-          name: t('history.status'),
-          key: 'status',
-          fieldName: 'status',
-          minWidth: 80,
-          maxWidth: 80,
-          onRender: (item?: FormatTransaction) => {
-            if (!item) {
-              return null
-            }
-            if (item.status !== 'success') {
-              const status = t(`history.${item.status}`)
-              return <span title={status}>{status}</span>
-            }
-            const confirmationCount = 1 + +tipBlockNumber - +item.blockNumber
-            if (confirmationCount < CONFIRMATION_THRESHOLD) {
-              return t(`history.confirming`)
-            }
-            return t(`history.success`)
-          },
-        },
-        {
-          name: t('history.description'),
-          key: 'description',
-          fieldName: 'description',
-          minWidth: 100,
-          onRender: (item?: FormatTransaction) => {
-            const isSelected = item && localDescription.key === item.hash
-            return item ? (
-              <>
-                <TextField
-                  data-description-key={item.hash}
-                  data-description-value={item.description}
-                  title={item.description}
-                  value={isSelected ? localDescription.description : item.description || ''}
-                  onBlur={isSelected ? onDescriptionFieldBlur : undefined}
-                  onKeyPress={isSelected ? onDescriptionPress : undefined}
-                  onChange={isSelected ? onDescriptionChange : undefined}
-                  borderless
-                  readOnly={!isSelected}
-                  styles={{
-                    root: {
-                      flex: '1',
-                      paddingRight: '15px',
-                    },
-                    fieldGroup: {
-                      backgroundColor: isSelected ? '#fff' : 'transparent',
-                      borderColor: 'transparent',
-                      border: isSelected ? `1px solid ${semanticColors.inputBorder}!important` : 'none',
-                    },
-                  }}
-                />
-                {isSelected ? null : (
-                  <IconButton
-                    iconProps={{ iconName: 'Edit' }}
-                    className="editButton"
-                    onClick={onDescriptionSelected(item.hash, item.description)}
-                  />
-                )}
-              </>
-            ) : null
-          },
-        },
-        {
-          name: t('history.amount'),
-          key: 'value',
-          fieldName: 'value',
-          minWidth: 200,
-          maxWidth: 250,
-          onRender: (item?: FormatTransaction) => {
-            if (item) {
-              return (
-                <span title={`${item.value} shannon`} className="textOverflow">
-                  {`${shannonToCKBFormatter(item.value, true)} CKB`}
-                </span>
-              )
-            }
-            return '-'
-          },
-        },
-      ].map((col): IColumn => ({ fieldName: col.key, ariaLabel: col.name, ...col })),
-    [
-      tipBlockNumber,
-      localDescription,
-      onDescriptionChange,
-      onDescriptionFieldBlur,
-      onDescriptionPress,
-      onDescriptionSelected,
-      t,
-    ]
+  const onTxClick = useCallback(
+    (e: React.SyntheticEvent<HTMLElement>) => {
+      const {
+        dataset: { hash = '' },
+      } = e.target as HTMLElement
+      setTxHash(currentHash => (currentHash === hash ? '' : hash))
+    },
+    [setTxHash]
   )
 
-  const { groups, txs } = useMemo(() => {
-    const groupItems: IGroup[] = [
-      {
-        key: 'pending',
-        name: 'Pending',
-        startIndex: 0,
-        count: 0,
-      },
-    ]
-    const txItems = items.map(item => {
-      const date = timeFormatter(+(item.timestamp || item.createdAt)).split(' ')[0]
-      if (item.status === 'pending') {
-        groupItems[0].count++
-        return { ...item, date }
-      }
-
-      if (date !== groupItems[groupItems.length - 1].key) {
-        groupItems.push({
-          key: date,
-          name: date,
-          startIndex: groupItems[groupItems.length - 1].count + groupItems[groupItems.length - 1].startIndex,
-          count: 1,
-        })
-      } else {
-        groupItems[groupItems.length - 1].count++
-      }
-      return { ...item, date }
-    })
-    return { groups: groupItems, txs: txItems }
-  }, [items])
-
   const onContextMenu = useCallback(
-    item => {
-      if (item && item.hash) {
-        const menuTemplate = [
-          {
-            label: t('history.detail'),
-            click: () => {
-              showTransactionDetails(item.hash)
-            },
-          },
-          {
-            label: t('history.copy-transaction-hash'),
-            click: () => {
-              window.clipboard.writeText(item.hash)
-            },
-          },
-          {
-            label: t('history.view-on-explorer'),
-            click: () => {
-              const explorerUrl = getExplorerUrl(isMainnet)
-              openExternal(`${explorerUrl}/transaction/${item.hash}`)
-            },
-          },
-        ]
-
-        openContextMenu(menuTemplate)
+    (e: React.SyntheticEvent<HTMLDivElement>) => {
+      e.stopPropagation()
+      e.preventDefault()
+      const {
+        dataset: { hash },
+      } = e.target as HTMLDivElement
+      if (!hash) {
+        return
       }
+      const menuTemplate = [
+        {
+          label: t('history.detail'),
+          click: () => {
+            showTransactionDetails(hash)
+          },
+        },
+        {
+          label: t('history.copy-tx-hash'),
+          click: () => {
+            clipboard.writeText(hash)
+          },
+        },
+        {
+          label: t('history.view-on-explorer'),
+          click: () => {
+            const explorerUrl = getExplorerUrl(isMainnet)
+            openExternal(`${explorerUrl}/transaction/${hash}`)
+          },
+        },
+      ]
+
+      openContextMenu(menuTemplate)
     },
     [isMainnet, t]
   )
 
+  const onActionBtnClick = useCallback(
+    (e: React.SyntheticEvent<HTMLButtonElement>) => {
+      const btn = (e.target as HTMLButtonElement)?.closest('button')
+      if (btn?.dataset?.hash && btn?.dataset?.action) {
+        switch (btn.dataset.action) {
+          case 'explorer': {
+            const explorerUrl = isMainnet ? 'https://explorer.nervos.org' : 'https://explorer.nervos.org/aggron'
+            openExternal(`${explorerUrl}/transaction/${btn.dataset.hash}`)
+            break
+          }
+          case 'detail': {
+            showTransactionDetails(btn.dataset.hash)
+            break
+          }
+          default: {
+            // ignore
+          }
+        }
+      }
+    },
+    [isMainnet]
+  )
+
   return (
-    <ShimmeredDetailsList
-      enableShimmer={isLoading}
-      columns={transactionColumns}
-      items={txs}
-      groups={groups.filter(group => group.count !== 0)}
-      groupProps={{
-        collapseAllVisibility: CollapseAllVisibility.hidden,
-        onRenderHeader: GroupHeader,
-      }}
-      checkboxVisibility={CheckboxVisibility.hidden}
-      onItemInvoked={item => {
-        showTransactionDetails(item.hash)
-      }}
-      onItemContextMenu={onContextMenu}
-      className="listWithDesc"
-      onRenderRow={HistoryRow}
-    />
+    <>
+      {txs.map(tx => {
+        const isSelected = localDescription.key === tx.hash
+
+        const confirmations = 1 + +tipBlockNumber - +tx.blockNumber
+        let status = tx.status as string
+        if (status === 'success' && confirmations < CONFIRMATION_THRESHOLD) {
+          status = 'confirming'
+        }
+        const statusLabel = t(`history.${status}`)
+        const confirmationsLabel = confirmations > 1000 ? '1,000+' : localNumberFormatter(confirmations)
+
+        let name = '--'
+        let value = '--'
+        let amount = '--'
+        let typeLabel = '--'
+
+        if (tx.sudtInfo?.sUDT) {
+          name = tx.sudtInfo.sUDT.tokenName || DEFAULT_SUDT_FIELDS.tokenName
+          const type = +tx.sudtInfo.amount <= 0 ? 'send' : 'receive'
+          typeLabel = `UDT ${t(`history.${type}`)}`
+          value = tx.sudtInfo.amount
+
+          if (tx.sudtInfo.sUDT.decimal) {
+            amount = `${sUDTAmountFormatter(sudtValueToAmount(value, tx.sudtInfo.sUDT.decimal, true))} ${
+              tx.sudtInfo.sUDT.symbol
+            }`
+          }
+        } else {
+          name = walletName
+          value = `${tx.value} shannons`
+          amount = `${shannonToCKBFormatter(tx.value, true)} CKB`
+          typeLabel = tx.nervosDao ? 'Nervos DAO' : t(`history.${tx.type}`)
+        }
+
+        let indicator = <Pending />
+        switch (status) {
+          case 'success': {
+            indicator = <Success />
+            break
+          }
+          case 'failed': {
+            indicator = <Failure />
+            break
+          }
+          default: {
+            // ignore
+          }
+        }
+        return (
+          <div key={tx.hash} data-is-open={txHash === tx.hash} className={styles.itemContainer}>
+            <div
+              tabIndex={0}
+              role="button"
+              className={styles.summary}
+              data-hash={tx.hash}
+              data-status={status}
+              onClick={onTxClick}
+              onContextMenu={onContextMenu}
+              onKeyPress={() => {}}
+            >
+              <div className={styles.avatar}>
+                {tx.sudtInfo?.sUDT ? (
+                  <SUDTAvatar name={name} type="token" style={{ width: '30px', height: '30px' }} />
+                ) : (
+                  <CKBAvatar />
+                )}
+              </div>
+              <time title={tx.timestamp}>{timeFormatter(tx.timestamp)}</time>
+              <CopyZone className={styles.amount} content={amount.replace(/[^\d\\.+-]/g, '')}>
+                {amount}
+              </CopyZone>
+              <span className={styles.type} title={typeLabel}>
+                {typeLabel}
+              </span>
+              <span className={styles.walletName}>{name}</span>
+              <div className={styles.indicator}>{indicator}</div>
+            </div>
+            <div className={styles.detail}>
+              <div title={statusLabel}>
+                <span>{t('history.status')}</span>
+                <span>{statusLabel}</span>
+              </div>
+              <div>
+                <span>{t('history.confirmations')}</span>
+                {confirmations >= 0 && (status === 'success' || status === 'confirming') ? (
+                  <span className={styles.confirmations} title={confirmationsLabel}>
+                    {confirmationsLabel}
+                  </span>
+                ) : null}
+              </div>
+              <div title={tx.hash} className={styles.txHash}>
+                <span>{t('history.transaction-hash')}</span>
+                <CopyZone content={tx.hash} name={t('history.copy-tx-hash')}>
+                  <span className={styles.hashOverflow}>{tx.hash.slice(0, -6)}</span>
+                  <span className={styles.ellipsis}>...</span>
+                  <span>{tx.hash.slice(-6)}</span>
+                </CopyZone>
+              </div>
+              <div title={tx.description} className={styles.description}>
+                <span>{t('history.description')}</span>
+                <TextField
+                  field="description"
+                  data-description-key={tx.hash}
+                  data-description-value={tx.description}
+                  title={tx.description}
+                  value={isSelected ? localDescription.description : tx.description || ''}
+                  onBlur={isSelected ? onDescriptionFieldBlur : undefined}
+                  onKeyPress={isSelected ? onDescriptionPress : undefined}
+                  onChange={isSelected ? onDescriptionChange : undefined}
+                  readOnly={!isSelected}
+                  onClick={onDescriptionSelected}
+                  className={styles.descriptionField}
+                  placeholder={t('common.click-to-edit')}
+                />
+              </div>
+              <div className={styles.footer}>
+                <button
+                  type="button"
+                  className={styles.detailNavButton}
+                  title={t('history.view-detail-button-title')}
+                  onClick={onActionBtnClick}
+                  data-hash={tx.hash}
+                  data-action="detail"
+                >
+                  <Detail />
+                  <span>{t('history.view-detail')}</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.explorerNavButton}
+                  title={t('history.view-in-explorer-button-title')}
+                  onClick={onActionBtnClick}
+                  data-hash={tx.hash}
+                  data-action="explorer"
+                >
+                  <Icon iconName="Explorer" />
+                  <span>{t('history.view-in-explorer')}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })}
+    </>
   )
 }
 

@@ -1,13 +1,23 @@
-import Core from '@nervosnetwork/ckb-sdk-core'
-import { interval, BehaviorSubject, merge } from 'rxjs'
-import { distinctUntilChanged, sampleTime, flatMap, delay, retry, debounceTime } from 'rxjs/operators'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import path from 'path'
 import https from 'https'
 import http from 'http'
+import { dialog, shell } from 'electron'
+import { t } from 'i18next'
+import CKB from '@nervosnetwork/ckb-sdk-core'
+import { interval, BehaviorSubject, merge } from 'rxjs'
+import { distinctUntilChanged, sampleTime, flatMap, delay, retry, debounceTime } from 'rxjs/operators'
+import env from 'env'
 import { ShouldBeTypeOf } from 'exceptions'
 import { ConnectionStatusSubject } from 'models/subjects/node'
 import { CurrentNetworkIDSubject } from 'models/subjects/networks'
 import NetworksService from 'services/networks'
+import RpcService from 'services/rpc-service'
+import { startCkbNode } from 'services/ckb-runner'
 import HexUtils from 'utils/hex'
+import { BUNDLED_CKB_URL } from 'utils/const'
+import logger from 'utils/logger'
 
 class NodeService {
   private static instance: NodeService
@@ -24,9 +34,11 @@ class NodeService {
   public tipNumberSubject = new BehaviorSubject<string>('0')
   public connectionStatusSubject = new BehaviorSubject<boolean>(false)
 
-  public core: Core = new Core('')
+  private _tipBlockNumber: string = '0'
 
-  constructor() {
+  public ckb: CKB = new CKB('')
+
+  constructor () {
     this.start()
     this.syncConnectionStatus()
     CurrentNetworkIDSubject.subscribe(async ({ currentNetworkID }) => {
@@ -37,13 +49,20 @@ class NodeService {
     })
   }
 
+  public get tipBlockNumber(): string {
+    return this._tipBlockNumber
+  }
+
   public syncConnectionStatus = () => {
     const periodSync = this.connectionStatusSubject.pipe(sampleTime(10000))
     const realtimeSync = this.connectionStatusSubject.pipe(distinctUntilChanged())
     merge(periodSync, realtimeSync)
       .pipe(debounceTime(500))
-      .subscribe(connectionStatus => {
-        ConnectionStatusSubject.next(connectionStatus)
+      .subscribe(connected => {
+        ConnectionStatusSubject.next({
+          url: this.ckb.node.url,
+          connected,
+        })
       })
   }
 
@@ -56,14 +75,14 @@ class NodeService {
     }
     if (url.startsWith('https')) {
       const httpsAgent = new https.Agent({ keepAlive: true })
-      this.core.setNode({ url, httpsAgent })
+      this.ckb.setNode({ url, httpsAgent })
     } else {
       const httpAgent = new http.Agent({ keepAlive: true })
-      this.core.setNode({ url, httpAgent })
+      this.ckb.setNode({ url, httpAgent })
     }
     this.tipNumberSubject.next('0')
     this.connectionStatusSubject.next(false)
-    return this.core
+    return this.ckb
   }
 
   public start = () => {
@@ -78,7 +97,7 @@ class NodeService {
       .pipe(
         delay(this.delayTime),
         flatMap(() => {
-          return this.core.rpc
+          return this.ckb.rpc
             .getTipBlockNumber()
             .then(tipNumber => {
               this.connectionStatusSubject.next(true)
@@ -97,7 +116,9 @@ class NodeService {
           if (!this.delayTime) {
             this.delayTime = 0
           }
-          this.tipNumberSubject.next(HexUtils.toDecimal(tipNumber))
+          const tip: string = HexUtils.toDecimal(tipNumber)
+          this._tipBlockNumber = tip
+          this.tipNumberSubject.next(tip)
         },
         () => {
           if (this.delayTime < 10 * this.intervalTime) {
@@ -107,6 +128,78 @@ class NodeService {
           this.stop = unsubscribe
         }
       )
+  }
+
+  public async tryStartNodeOnDefaultURI(): Promise<boolean> {
+    let network = NetworksService.getInstance().getCurrent()
+    if (network.remote !== BUNDLED_CKB_URL) {
+      return false
+    }
+    try {
+      await new RpcService(network.remote).getChain()
+      logger.info('CKB:\texternal RPC on default uri detected, skip starting bundled CKB node.')
+      return false
+    } catch (err) {
+      logger.info('CKB:\texternal RPC on default uri not detected, starting bundled CKB node.')
+      const isReadyToStart = await this.detectDependency()
+      return isReadyToStart ? this.startNode() : this.showGuideDialog()
+    }
+  }
+
+  private showGuideDialog = () => {
+    const I18N_PATH = `messageBox.ckb-dependency`
+    return dialog.showMessageBox({
+      type: 'info',
+      buttons: ['skip', 'install-and-exit'].map(label => t(`${I18N_PATH}.buttons.${label}`)),
+      defaultId: 1,
+      title: t(`${I18N_PATH}.title`),
+      message: t(`${I18N_PATH}.message`),
+      detail: t(`${I18N_PATH}.detail`),
+      cancelId: 0,
+      noLink: true,
+    }).then(({ response }) => {
+      switch (response) {
+        case 1: {
+          // open browser and shutdown
+          const VC_REDIST_URL = `https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads`
+          shell.openExternal(VC_REDIST_URL)
+          env.app.quit()
+          return false
+        }
+        case 0:
+        default: {
+          // dismiss dialog and continue
+          return this.startNode()
+        }
+      }
+    })
+  }
+
+  private detectDependency = async () => {
+    if (process.platform !== 'win32') {
+      return true
+    }
+    const execPromise = promisify(exec)
+    const arches = process.arch === 'x64' ? ['x86', 'x64'] : ['x64']
+    const queries = arches.map(arch =>
+      `REG QUERY ` +
+      [`HKEY_LOCAL_MACHINE`, `SOFTWARE`, `Microsoft`, `VisualStudio`, `14.0`, `VC`, `Runtimes`, arch].join(path.sep))
+    const vcredists = await Promise.all(
+      queries.map(
+        query => execPromise(query)
+          .then(({ stdout }) => !!stdout)
+          .catch(() => false)
+      )
+    )
+    return vcredists.includes(true)
+  }
+
+  private startNode = () => {
+    return startCkbNode().then(() => true).catch(err => {
+      logger.info('CKB:\tfail to start bundled CKB with error:')
+      logger.error(err)
+      return false
+    })
   }
 }
 

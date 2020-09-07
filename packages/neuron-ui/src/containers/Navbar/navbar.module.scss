@@ -1,0 +1,104 @@
+@import '../../styles/mixin.scss';
+
+$hover-bg-color: #3cc68a4d;
+$left-padding: 15px;
+
+.sidebar {
+  display: grid;
+  grid-template:
+    'name' 75px
+    'navs' 1fr
+    'network' 3rem
+    'sync' 3rem /
+    var(--sidebar-width);
+  height: 100vh;
+  background: black;
+}
+
+.name {
+  @include regular-text;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  grid-area: name;
+  font-size: 1rem;
+  padding: 20px 15px;
+  color: var(--nervos-green);
+  letter-spacing: 0.53px;
+  margin: 0;
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-weight: 700;
+}
+
+.navs {
+  display: flex;
+  flex-direction: column;
+  grid-area: navs;
+  background-color: #191919;
+
+  button {
+    @include medium-text;
+    appearance: none;
+    border: none;
+    color: white;
+    background: transparent;
+    font-size: 1rem;
+    line-height: 2.5rem;
+    text-align: left;
+    padding: 1px 0 1px $left-padding;
+
+    &:hover {
+      font-weight: 600;
+      background-color: $hover-bg-color;
+    }
+
+    &[data-active='true'] {
+      font-weight: 600;
+      background-color: var(--nervos-green);
+    }
+  }
+}
+
+.network {
+  grid-area: network;
+  align-self: flex-end;
+
+  & > div {
+    align-items: flex-end;
+    padding-left: $left-padding * 2;
+    padding-right: $left-padding;
+    padding-bottom: 5px;
+  }
+}
+
+.sync {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  grid-area: sync;
+  font-size: 0.8rem;
+
+  & > span {
+    padding-left: $left-padding * 2;
+    color: var(--nervos-green);
+  }
+}
+
+.experimentalDivider {
+  color: var(--nervos-green);
+  margin: 5px $left-padding;
+  border-bottom: 1px solid currentColor;
+  padding: 4px 0;
+  pointer-events: none;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  svg {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+  }
+}

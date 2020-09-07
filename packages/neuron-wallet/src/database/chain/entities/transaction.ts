@@ -10,16 +10,15 @@ import {
   AfterUpdate,
   AfterRemove,
 } from 'typeorm'
-import { remote } from 'electron'
-import { Transaction as TransactionInterface, TransactionStatus, CellDep } from 'types/cell-types'
 import TxDbChangedSubject from 'models/subjects/tx-db-changed-subject'
 import InputEntity from './input'
 import OutputEntity from './output'
-
-const isRenderer = process && process.type === 'renderer'
-const txDbChangedSubject = isRenderer
-  ? remote.require('./models/subjects/tx-db-changed-subject').default.getSubject()
-  : TxDbChangedSubject.getSubject()
+import TransactionModel, { TransactionStatus } from 'models/chain/transaction'
+import CellDep, { DepType } from 'models/chain/cell-dep'
+import OutPoint from 'models/chain/out-point'
+import Input from 'models/chain/input'
+import Output from 'models/chain/output'
+import { ChildProcess } from 'utils/worker'
 
 @Entity()
 export default class Transaction extends BaseEntity {
@@ -99,13 +98,18 @@ export default class Transaction extends BaseEntity {
   @OneToMany(_type => OutputEntity, output => output.transaction)
   outputs!: OutputEntity[]
 
-  public toInterface(): TransactionInterface {
-    const inputs = this.inputs ? this.inputs.map(input => input.toInterface()) : []
-    const outputs = this.outputs ? this.outputs.map(output => output.toInterface()) : []
-    return {
+  public toModel(): TransactionModel {
+    const inputs: Input[] = this.inputs ? this.inputs.map(input => input.toModel()) : []
+    const outputs: Output[] = this.outputs ? this.outputs.map(output => output.toModel()) : []
+    return TransactionModel.fromObject({
       hash: this.hash,
       version: this.version,
-      cellDeps: this.cellDeps,
+      cellDeps: this.cellDeps?.map((cd: any) => {
+        if (cd instanceof CellDep) {
+          return cd
+        }
+        return new CellDep(new OutPoint(cd.outPoint.txHash, cd.outPoint.index), cd.depType as DepType)
+      }) || [],
       headerDeps: this.headerDeps,
       inputs,
       outputs,
@@ -113,11 +117,13 @@ export default class Transaction extends BaseEntity {
       blockNumber: this.blockNumber,
       blockHash: this.blockHash,
       witnesses: this.witnesses,
-      description: this.description,
+      description: this.description || '',
       status: this.status,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
-    }
+      outputsData: [],
+      nervosDao: false
+    })
   }
 
   @BeforeInsert()
@@ -150,9 +156,13 @@ export default class Transaction extends BaseEntity {
   }
 
   private changed = (event: string) => {
-    txDbChangedSubject.next({
-      event,
-      tx: this.toInterface(),
-    })
+    if (ChildProcess.isChildProcess()) {
+      ChildProcess.send({
+        channel: 'tx-db-changed',
+        result: { event }
+      })
+    } else {
+      TxDbChangedSubject.getSubject().next({ event })
+    }
   }
 }

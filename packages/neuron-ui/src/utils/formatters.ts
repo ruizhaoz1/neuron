@@ -1,4 +1,4 @@
-import { CapacityUnit } from './const'
+import { CapacityUnit } from './enums'
 
 const base = 10e9
 const numberParser = (value: string, exchange: string) => {
@@ -22,8 +22,10 @@ const timeFormatter = new Intl.DateTimeFormat('zh-CN', {
   hour: '2-digit',
   minute: '2-digit',
   second: '2-digit',
-  hour12: false,
-})
+  // use hourCycle h23 instead of hour12 false for chrome 80 and electron 8
+  // hour12: false,
+  hourCycle: 'h23',
+} as Intl.DateTimeFormatOptions)
 
 export const queryFormatter = (params: { [index: string]: any }) => {
   const newQuery = new URLSearchParams()
@@ -134,12 +136,20 @@ export const shannonToCKBFormatter = (shannon: string = '0', showPositiveSign?: 
 }
 
 export const localNumberFormatter = (num: string | number | bigint = 0) => {
-  if (typeof num !== 'bigint' && Number.isNaN(+num)) {
-    console.warn(`Nuumber is not a valid number`)
-    return num
+  if (num === '' || num === undefined || num === null) {
+    return ''
   }
-  const n: any = BigInt(num)
-  return numberFormatter.format(n)
+  if (typeof num === 'bigint') {
+    return numberFormatter.format(num as any)
+  }
+  if (Number.isNaN(+num)) {
+    console.warn(`Number is not a valid number`)
+    return num.toString()
+  }
+  const parts = num.toString().split('.')
+  const n: any = BigInt(parts[0])
+  parts[0] = numberFormatter.format(n)
+  return parts.join('.')
 }
 
 export const uniformTimeFormatter = (time: string | number | Date) => {
@@ -157,9 +167,9 @@ export const addressesToBalance = (addresses: State.Address[] = []) => {
     .toString()
 }
 
-export const outputsToTotalAmount = (outputs: { amount: string; unit: CapacityUnit }[]) => {
+export const outputsToTotalAmount = (outputs: Readonly<State.Output[]>) => {
   const totalCapacity = outputs.reduce((total, cur) => {
-    if (Number.isNaN(+cur.amount)) {
+    if (Number.isNaN(+(cur.amount || ''))) {
       return total
     }
     return total + BigInt(CKBToShannonFormatter(cur.amount, cur.unit))
@@ -177,6 +187,7 @@ export const failureResToNotification = (res: any): State.Message => {
   }
 }
 
+// TODO: deprecated after merging the dev branch which has removed difficulty.
 export const difficultyFormatter = (value: bigint) => {
   const units = new Map([
     ['YH', 1e24],
@@ -202,15 +213,62 @@ export const difficultyFormatter = (value: bigint) => {
   return `${localNumberFormatter(value)} H`
 }
 
-export default {
-  queryFormatter,
-  currencyFormatter,
-  CKBToShannonFormatter,
-  shannonToCKBFormatter,
-  localNumberFormatter,
-  uniformTimeFormatter,
-  difficultyFormatter,
-  addressesToBalance,
-  outputsToTotalAmount,
-  failureResToNotification,
+export const sudtAmountToValue = (amount: string = '0', decimal: string = '0') => {
+  try {
+    if (Number.isNaN(+amount)) {
+      console.warn(`Amount is not a valid number`)
+      return `0`
+    }
+    const [integer = '0', decimalFraction = ''] = amount.split('.')
+    const decimalLength = 10 ** decimalFraction.length
+    const num = integer + decimalFraction
+    return (BigInt(num) * BigInt(10 ** +decimal / decimalLength)).toString()
+  } catch {
+    return undefined
+  }
+}
+
+export const sudtValueToAmount = (value: string | null = '0', decimal: string = '0', showPositiveSign = false) => {
+  if (value === null) {
+    return showPositiveSign ? '+0' : '0'
+  }
+  if (Number.isNaN(+value)) {
+    console.warn(`sUDT value is not a valid number`)
+    return showPositiveSign ? '+0' : '0'
+  }
+  let sign = ''
+  if (value.startsWith('-')) {
+    sign = '-'
+  } else if (showPositiveSign) {
+    sign = '+'
+  }
+  const unsignedValue = value.replace(/^-?0*/, '')
+  const dec = +decimal
+  if (dec === 0) {
+    return +unsignedValue ? `${sign}${unsignedValue}` : '0'
+  }
+  let unsignedSUDTValue = ''
+  if (unsignedValue.length <= dec) {
+    unsignedSUDTValue = `0.${unsignedValue.padStart(dec, '0')}`.replace(/\.?0+$/, '')
+  } else {
+    const decimalFraction = `.${unsignedValue.slice(-dec)}`.replace(/\.?0+$/, '')
+    const int = unsignedValue.slice(0, -dec).replace(/\^0+/, '')
+    unsignedSUDTValue = `${(
+      int
+        .split('')
+        .reverse()
+        .join('')
+        .match(/\d{1,3}/g) || ['0']
+    )
+      .join(',')
+      .split('')
+      .reverse()
+      .join('')}${decimalFraction}`
+  }
+  return `${sign}${+unsignedSUDTValue === 0 ? '0' : unsignedSUDTValue}`
+}
+
+export const sUDTAmountFormatter = (amount: string) => {
+  const fmtted = amount.substr(0, (amount.split('.')[0]?.length ?? 0) + 9)
+  return `${fmtted}${fmtted.length < amount.length ? '...' : ''}`
 }

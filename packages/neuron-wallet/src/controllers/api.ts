@@ -1,27 +1,127 @@
 import { take } from 'rxjs/operators'
-import { ipcMain, IpcMainInvokeEvent } from 'electron'
-
+import { ipcMain, IpcMainInvokeEvent, dialog, app, OpenDialogSyncOptions, MenuItemConstructorOptions, MenuItem, Menu, screen, BrowserWindow } from 'electron'
+import { t } from 'i18next'
 import env from 'env'
-import i18n from 'utils/i18n'
 import { showWindow } from './app/show-window'
-import { TransactionsController, WalletsController, SyncController, NetworksController, UpdateController, DaoController } from 'controllers'
-import { NetworkType, NetworkID, Network } from 'types/network'
+import { NetworkType, Network } from 'models/network'
+import { ConnectionStatusSubject } from 'models/subjects/node'
 import NetworksService from 'services/networks'
 import WalletsService from 'services/wallets'
-import { ConnectionStatusSubject } from 'models/subjects/node'
-import { SystemScriptSubject } from 'models/subjects/system-script'
-import { ResponseCode } from 'utils/const'
-import { TransactionWithoutHash, OutPoint } from 'types/cell-types'
+import SettingsService, { Locale } from 'services/settings'
+import { ResponseCode, SETTINGS_WINDOW_TITLE } from 'utils/const'
 
-/**
- * @class ApiController
- * @description Handle channel messages from neuron UI renderer process
- */
+import WalletsController from 'controllers/wallets'
+import TransactionsController from 'controllers/transactions'
+import DaoController from 'controllers/dao'
+import NetworksController from 'controllers/networks'
+import UpdateController from 'controllers/update'
+import SyncController from 'controllers/sync'
+import Transaction from 'models/chain/transaction'
+import OutPoint from 'models/chain/out-point'
+import SignMessageController from 'controllers/sign-message'
+import CustomizedAssetsController from './customized-assets'
+import SystemScriptInfo from 'models/system-script-info'
+import logger from 'utils/logger'
+import AssetAccountController from './asset-account'
+import { GenerateCreateAssetAccountTxParams, SendCreateAssetAccountTxParams, UpdateAssetAccountParams } from './asset-account'
+import AnyoneCanPayController from './anyone-can-pay'
+import { GenerateAnyoneCanPayTxParams, GenerateAnyoneCanPayAllTxParams, SendAnyoneCanPayTxParams } from './anyone-can-pay'
+
+// Handle channel messages from neuron react UI renderer process and user actions.
 export default class ApiController {
-  public mount() {
+  private walletsController = new WalletsController()
+  private transactionsController = new TransactionsController()
+  private daoController = new DaoController()
+  private networksController = new NetworksController()
+  private signAndVerifyController = new SignMessageController()
+  private customizedAssetsController = new CustomizedAssetsController()
+  private assetAccountController = new AssetAccountController()
+  private anyoneCanPayController = new AnyoneCanPayController()
+
+  public async mount() {
+    this.registerHandlers()
+
+    await this.networksController.start()
+  }
+
+  public runCommand(command: string, params: string) {
+    if (command === 'export-xpubkey') {
+      this.walletsController.exportXPubkey(params)
+    }
+
+    if (command === 'import-xpubkey') {
+      this.walletsController.importXPubkey().catch(error => {
+        dialog.showMessageBox({ type: 'error', buttons: [], message: error.message })
+      })
+    }
+
+    if (command === 'delete-wallet' || command === 'backup-wallet') {
+      // params: walletID
+      this.walletsController.requestPassword(params, command)
+    }
+  }
+
+  private registerHandlers() {
     const handle = this.handleChannel
 
+    // sync messages
+    ipcMain.on('get-locale', e => {
+      e.returnValue = SettingsService.getInstance().locale
+    })
+
+    ipcMain.on('get-version', e => {
+      e.returnValue = app.getVersion()
+    })
+
+    ipcMain.on('get-platform', e => {
+      e.returnValue = process.platform
+    })
+
+    ipcMain.on('get-win-id', e => {
+      e.returnValue = BrowserWindow.fromWebContents(e.sender)?.id
+    })
+
     // App
+    handle('get-system-codehash', async () => {
+      return {
+        status: ResponseCode.Success,
+        result: SystemScriptInfo.SECP_CODE_HASH
+      }
+    })
+
+    handle('show-error-message', async (_, { title = '',  content = '' } ) => {
+      dialog.showErrorBox(title, content)
+    })
+
+    handle('show-open-dialog', async (_, params: OpenDialogSyncOptions) => {
+      const result = await dialog.showOpenDialog(params)
+      return {
+        status: ResponseCode.Success,
+        result
+      }
+    })
+
+    handle('show-open-dialog-modal', async (e, params: OpenDialogSyncOptions) => {
+      const win = BrowserWindow.fromWebContents(e.sender)!
+      const result = await dialog.showOpenDialog(win, params)
+      return {
+        status: ResponseCode.Success,
+        result
+      }
+    })
+
+    handle('open-context-menu', async (_, params: Array<MenuItemConstructorOptions | MenuItem>) => {
+      Menu.buildFromTemplate(params).popup()
+    })
+
+    handle('get-all-displays-size', async () => {
+      const result = screen.getAllDisplays().map(d => d.size)
+      return {
+        status: ResponseCode.Success,
+        result
+      }
+    })
+
     handle('load-init-data', async () => {
       const walletsService = WalletsService.getInstance()
       const networksService = NetworksService.getInstance()
@@ -34,12 +134,11 @@ export default class ApiController {
         networks = [],
         syncedBlockNumber = '0',
         connectionStatus = false,
-        codeHash = '',
       ] = await Promise.all([
         networksService.getCurrentID(),
         networksService.getAll(),
 
-        SyncController.currentBlockNumber()
+        new SyncController().currentBlockNumber()
           .then(res => {
             if (res.status) {
               return res.result.currentBlockNumber
@@ -55,22 +154,14 @@ export default class ApiController {
             () => { resolve(false) }
           )
         }),
-
-        new Promise(resolve => {
-          SystemScriptSubject.pipe(take(1)).subscribe(
-            ({ codeHash: currentCodeHash }) => resolve(currentCodeHash),
-            () => { resolve('') },
-            () => { resolve('') }
-          )
-        }),
       ])
 
       const addresses: Controller.Address[] = await (currentWallet
-        ? WalletsController.getAllAddresses(currentWallet.id).then(res => res.result)
+        ? this.walletsController.getAllAddresses(currentWallet.id).then(res => res.result)
         : [])
 
       const transactions = currentWallet
-        ? await TransactionsController.getAllByKeywords({
+        ? await this.transactionsController.getAll({
             pageNo: 1,
             pageSize: 15,
             keywords: '',
@@ -87,7 +178,6 @@ export default class ApiController {
         transactions,
         syncedBlockNumber,
         connectionStatus,
-        codeHash,
       }
 
       return { status: ResponseCode.Success, result: initState }
@@ -103,140 +193,163 @@ export default class ApiController {
       }
     })
 
+    handle('set-locale', async (_, locale: Locale) => {
+      return SettingsService.getInstance().locale = locale
+    })
+
     // Wallets
 
     handle('get-all-wallets', async () => {
-      return WalletsController.getAll()
+      return this.walletsController.getAll()
     })
 
     handle('get-current-wallet', async () => {
-      return WalletsController.getCurrent()
+      return this.walletsController.getCurrent()
     })
 
     handle('set-current-wallet', async (_, id: string) => {
-      return WalletsController.activate(id)
+      return this.walletsController.activate(id)
     })
 
     handle('import-mnemonic', async (_, params: { name: string; password: string; mnemonic: string }) => {
-      return WalletsController.importMnemonic(params)
+      return this.walletsController.importMnemonic(params)
     })
 
     handle('import-keystore', async (_, params: { name: string; password: string; keystorePath: string }) => {
-      return WalletsController.importKeystore(params)
+      return this.walletsController.importKeystore(params)
     })
 
     handle('create-wallet', async (_, params: { name: string; password: string; mnemonic: string }) => {
-      return WalletsController.create(params)
+      return this.walletsController.create(params)
     })
 
     handle('update-wallet', async (_, params: { id: string; password: string; name: string; newPassword?: string }) => {
-      return WalletsController.update(params)
+      return this.walletsController.update(params)
     })
 
     handle('delete-wallet', async (_, { id = '', password = '' }) => {
-      return WalletsController.delete({ id, password })
+      return this.walletsController.delete({ id, password })
     })
 
     handle('backup-wallet', async (_, { id = '', password = '' }) => {
-      return WalletsController.backup({ id, password })
+      return this.walletsController.backup({ id, password })
+    })
+
+    handle('export-xpubkey', async (_, id: string) => {
+      return this.walletsController.exportXPubkey(id)
     })
 
     handle('get-all-addresses', async (_, id: string) => {
-      return WalletsController.getAllAddresses(id)
+      return this.walletsController.getAllAddresses(id)
     })
 
     handle('update-address-description', async (_, params: { walletID: string, address: string, description: string }) => {
-      return WalletsController.updateAddressDescription(params)
+      return this.walletsController.updateAddressDescription(params)
     })
 
     handle('request-password', async (_, { walletID, action }: { walletID: string, action: 'delete-wallet' | 'backup-wallet' }) => {
-      WalletsController.requestPassword(walletID, action)
+      this.walletsController.requestPassword(walletID, action)
     })
 
-    handle('send-tx', async (_, params: { walletID: string, tx: TransactionWithoutHash, password: string, description?: string }) => {
-      return WalletsController.sendTx(params)
+    handle('send-tx', async (_, params: { walletID: string, tx: Transaction, password: string, description?: string }) => {
+      return this.walletsController.sendTx(params)
     })
 
     handle('generate-tx', async (_, params: { walletID: string, items: { address: string, capacity: string }[], fee: string, feeRate: string }) => {
-      return WalletsController.generateTx(params)
+      return this.walletsController.generateTx(params)
     })
 
     handle('generate-send-all-tx', async (_, params: { walletID: string, items: { address: string, capacity: string }[], fee: string, feeRate: string }) => {
-      return WalletsController.generateSendingAllTx(params)
+      return this.walletsController.generateSendingAllTx(params)
     })
 
     handle('generate-mnemonic', async () => {
-      return WalletsController.generateMnemonic()
+      return this.walletsController.generateMnemonic()
     })
 
     handle('validate-mnemonic', async (_, mnemonic: string) => {
-      return WalletsController.validateMnemonic(mnemonic)
+      return this.walletsController.validateMnemonic(mnemonic)
     })
 
     // Transactions
 
     handle('get-transaction-list', async (_, params: Controller.Params.TransactionsByKeywords) => {
-      return TransactionsController.getAllByKeywords(params)
+      return this.transactionsController.getAll(params)
     })
 
     handle('get-transaction', async (_, { walletID, hash }: { walletID: string, hash: string }) => {
-      return TransactionsController.get(walletID, hash)
+      return this.transactionsController.get(walletID, hash)
     })
 
-    handle('update-transaction-description', async (_, params: { hash: string; description: string }) => {
-      return TransactionsController.updateDescription(params)
+    handle('update-transaction-description', async (_, params: { walletID: string; hash: string; description: string }) => {
+      return this.transactionsController.updateDescription(params)
     })
 
     handle('show-transaction-details', async (_, hash: string) => {
-      showWindow(`#/transaction/${hash}`, i18n.t(`messageBox.transaction.title`, { hash }))
+      showWindow(`#/transaction/${hash}`, t(`messageBox.transaction.title`, { hash }), {
+        height: 750
+      })
+    })
+
+    handle('export-transactions', async (_, params: { walletID: string }) => {
+      return this.transactionsController.exportTransactions(params)
     })
 
     // Dao
 
     handle('get-dao-data', async (_, params: Controller.Params.GetDaoCellsParams) => {
-      return DaoController.getDaoCells(params)
+      return this.daoController.getDaoCells(params)
     })
 
     handle('generate-dao-deposit-tx', async (_, params: { walletID: string, capacity: string, fee: string, feeRate: string }) => {
-      return DaoController.generateDepositTx(params)
+      return this.daoController.generateDepositTx(params)
     })
 
     handle('generate-dao-deposit-all-tx', async (_, params: { walletID: string, fee: string, feeRate: string }) => {
-      return DaoController.generateDepositAllTx(params)
+      return this.daoController.generateDepositAllTx(params)
     })
 
     handle('start-withdraw-from-dao', async (_, params: { walletID: string, outPoint: OutPoint, fee: string, feeRate: string }) => {
-      return DaoController.startWithdrawFromDao(params)
+      return this.daoController.startWithdrawFromDao(params)
     })
 
     handle('withdraw-from-dao', async (_, params: { walletID: string, depositOutPoint: OutPoint, withdrawingOutPoint: OutPoint, fee: string, feeRate: string }) => {
-      return DaoController.withdrawFromDao(params)
+      return this.daoController.withdrawFromDao(params)
+    })
+
+    // Customized Asset
+    handle('get-customized-asset-cells', async (_, params: Controller.Params.GetCustomizedAssetCellsParams) => {
+      return this.customizedAssetsController.getCustomizedAssetCells(params)
+    })
+
+    handle('generate-withdraw-customized-cell-tx', async (_, params: Controller.Params.GenerateWithdrawCustomizedCellTxParams) => {
+      return this.customizedAssetsController.generateWithdrawCustomizedCellTx(params)
     })
 
     // Networks
 
     handle('get-all-networks', async () => {
-      return NetworksController.getAll()
+      return this.networksController.getAll()
     })
 
-    handle('create-network', async (_, { name, remote, type = NetworkType.Normal, genesisHash = '0x', chain = 'ckb' }: Network) => {
-      return NetworksController.create({ name, remote, type, genesisHash, chain })
+    handle('create-network', async (_, { name, remote, type = NetworkType.Normal }: Network) => {
+      return this.networksController.create({ name, remote, type, genesisHash: '0x', chain: 'ckb', id: '' })
     })
 
-    handle('update-network', async (_, { networkID, options }: { networkID: NetworkID, options: Partial<Network> }) => {
-      return NetworksController.update(networkID, options)
+    handle('update-network', async (_, { networkID, options }: { networkID: string, options: Partial<Network> }) => {
+      return this.networksController.update(networkID, options)
     })
 
     handle('get-current-network-id', async () => {
-      return NetworksController.currentID()
+      return this.networksController.currentID()
     })
 
-    handle('set-current-network-id', async (_, id: NetworkID) => {
-      return NetworksController.activate(id)
+    handle('set-current-network-id', async (_, id: string) => {
+      return this.networksController.activate(id)
     })
 
-    handle('delete-network', async (_, id: NetworkID) => {
-      return NetworksController.delete(id)
+    handle('delete-network', async (_, id: string) => {
+      return this.networksController.delete(id)
     })
 
     // Updater
@@ -255,8 +368,63 @@ export default class ApiController {
 
     // Settings
 
-    handle('clear-cache', async () => {
-      return SyncController.clearCache()
+    handle('show-settings', (_, params: Controller.Params.ShowSettings) => {
+      showWindow(`#/settings/${params.tab}`, t(SETTINGS_WINDOW_TITLE), { width: 900 })
+    })
+
+    handle('clear-cache', async (_, params: {resetIndexerData: boolean } | null) => {
+      return new SyncController().clearCache(params?.resetIndexerData)
+    })
+
+    // Sign and Verify
+    handle('sign-message', async (_, params: Controller.Params.SignParams) => {
+      return this.signAndVerifyController.sign(params)
+    })
+
+    handle('verify-signature', async (_, params: Controller.Params.VerifyParams) => {
+      return this.signAndVerifyController.verify(params)
+    })
+
+    // sUDT
+
+    handle('get-anyone-can-pay-script', () => {
+      return this.anyoneCanPayController.getScript()
+    })
+
+    handle('get-token-info-list', () => {
+      return this.assetAccountController.getTokenInfoList()
+    })
+
+    handle('generate-create-asset-account-tx', async (_, params: GenerateCreateAssetAccountTxParams) => {
+      return this.assetAccountController.generateCreateTx(params)
+    })
+
+    handle('send-create-asset-account-tx', async (_, params: SendCreateAssetAccountTxParams) => {
+      return this.assetAccountController.sendCreateTx(params)
+    })
+
+    handle('update-asset-account', async (_, params: UpdateAssetAccountParams) => {
+      return this.assetAccountController.update(params)
+    })
+
+    handle('asset-accounts', async (_, params: { walletID: string }) => {
+      return this.assetAccountController.getAll(params)
+    })
+
+    handle("get-asset-account", async (_, params: { walletID: string, id: number }) => {
+      return this.assetAccountController.getAccount(params)
+    })
+
+    handle('generate-send-to-anyone-can-pay-tx', async (_, params: GenerateAnyoneCanPayTxParams) => {
+      return this.anyoneCanPayController.generateTx(params)
+    })
+
+    handle('generate-send-all-to-anyone-can-pay-tx', async (_, params: GenerateAnyoneCanPayAllTxParams) => {
+      return this.anyoneCanPayController.generateSendAllTx(params)
+    })
+
+    handle('send-to-anyone-can-pay', async (_, params: SendAnyoneCanPayTxParams) => {
+      return this.anyoneCanPayController.sendTx(params)
     })
   }
 
@@ -266,8 +434,14 @@ export default class ApiController {
     ipcMain.handle(channel, async (event, args) => {
       try {
         const res = await listener(event, args)
+        // All objects, array, class instance need to be serialized before sent to the IPC
+        if (typeof res === 'object') {
+          return JSON.parse(JSON.stringify(res))
+        }
         return res
       } catch (err) {
+        logger.warn(`channel handling error: ${err}`)
+
         if (err.code === 'ECONNREFUSED') {
           err.code = ApiController.NODE_DISCONNECTED_CODE
         }

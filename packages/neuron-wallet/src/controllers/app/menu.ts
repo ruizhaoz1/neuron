@@ -1,19 +1,27 @@
-import { 
-  app, 
+import fs from 'fs'
+import path from 'path'
+import {
+  app,
   shell,
   BrowserWindow,
   dialog,
   MenuItemConstructorOptions,
   Menu,
 } from 'electron'
-import i18n from 'utils/i18n'
+import { t } from 'i18next'
+import { Subject } from 'rxjs'
+import { throttleTime } from 'rxjs/operators'
 import env from 'env'
-import { UpdateController } from 'controllers'
+import UpdateController from 'controllers/update'
+import ExportDebugController from 'controllers/export-debug'
+import { showWindow } from 'controllers/app/show-window'
 import WalletsService from 'services/wallets'
 import CommandSubject from 'models/subjects/command'
+import logger from 'utils/logger'
+import { SETTINGS_WINDOW_TITLE } from 'utils/const'
 
 enum URL {
-  Preference = '/settings/general',
+  Settings = '/settings/general',
   CreateWallet = '/wizard/mnemonic/create',
   ImportMnemonic = '/wizard/mnemonic/import',
   ImportKeystore = '/keystore/import',
@@ -23,6 +31,7 @@ enum ExternalURL {
   Website = 'https://www.nervos.org/',
   Repository = 'https://github.com/nervosnetwork/neuron',
   Issues = 'https://github.com/nervosnetwork/neuron/issues',
+  Doc = 'https://docs.nervos.org/docs/basics/tools#neuron-wallet'
 }
 
 const separator: MenuItemConstructorOptions = {
@@ -30,28 +39,59 @@ const separator: MenuItemConstructorOptions = {
 }
 
 const showAbout = () => {
-  const options = {
-    type: 'info',
-    title: app.name,
-    message: app.name,
-    detail: app.getVersion(),
-    buttons: ['OK'],
-    cancelId: 0,
+  let applicationVersion = t('about.app-version', { name: app.name, version: app.getVersion() })
+
+  const appPath = app.isPackaged ? app.getAppPath() : path.join(__dirname, '../../../../..')
+  const ckbVersionPath = path.join(appPath, '.ckb-version')
+  if (fs.existsSync(ckbVersionPath)) {
+    try {
+      const ckbVersion = fs.readFileSync(ckbVersionPath, 'utf8')
+      applicationVersion += `\n${t('about.ckb-client-version', { version: ckbVersion })}`
+    } catch (err) {
+      logger.error(`[Menu]: `, err)
+    }
   }
-  dialog.showMessageBox(options)
+
+  const isWin = process.platform === 'win32'
+
+  if (isWin) {
+    const options = {
+      type: 'info',
+      title: app.name,
+      message: app.name,
+      detail: applicationVersion,
+      buttons: ['OK'],
+      cancelId: 0,
+    }
+    dialog.showMessageBox(options)
+    return
+  }
+
+  app.setAboutPanelOptions({ applicationVersion, version: '' })
+  app.showAboutPanel()
 }
 
-const navTo = (url: string) => {
+const navigateTo = (url: string) => {
   const window = BrowserWindow.getFocusedWindow()
   if (window) {
-    CommandSubject.next({ winID: window.id, type: 'nav', payload: url })
+    CommandSubject.next({ winID: window.id, type: 'navigate-to-url', payload: url, dispatchToUI: true })
   }
+}
+
+const showSettings$ = new Subject()
+
+showSettings$.pipe(throttleTime(1000)).subscribe(() => {
+  showWindow(`#${URL.Settings}`, t(SETTINGS_WINDOW_TITLE))
+})
+
+const showSettings = () => {
+  showSettings$.next()
 }
 
 const requestPassword = (walletID: string, actionType: 'delete-wallet' | 'backup-wallet') => {
   const window = BrowserWindow.getFocusedWindow()
   if (window) {
-    CommandSubject.next({ winID: window.id, type: actionType, payload: walletID })
+    CommandSubject.next({ winID: window.id, type: actionType, payload: walletID, dispatchToUI: false })
   }
 }
 
@@ -70,31 +110,30 @@ const updateApplicationMenu = (mainWindow: BrowserWindow | null) => {
     submenu: [
       {
         id: 'about',
-        label: i18n.t('application-menu.neuron.about', {
+        label: t('application-menu.neuron.about', {
           app: app.name,
         }),
-        role: 'about',
         click: () => { showAbout() },
       },
       {
-        label: i18n.t('application-menu.neuron.check-updates'),
+        label: t('application-menu.neuron.check-updates'),
         enabled: isMainWindow && !UpdateController.isChecking,
         click: () => {
-           new UpdateController().checkUpdates()
-           navTo(URL.Preference)
-         }
+          new UpdateController().checkUpdates()
+          showSettings()
+        }
       },
       separator,
       {
         id: 'preference',
         enabled: isMainWindow,
-        label: i18n.t('application-menu.neuron.preferences'),
+        label: t('application-menu.neuron.preferences'),
         accelerator: 'CmdOrCtrl+,',
-        click: () => { navTo(URL.Preference) }
+        click: showSettings
       },
       separator,
       {
-        label: i18n.t('application-menu.neuron.quit', {
+        label: t('application-menu.neuron.quit', {
           app: app.name,
         }),
         role: 'quit',
@@ -114,35 +153,45 @@ const updateApplicationMenu = (mainWindow: BrowserWindow | null) => {
 
   const walletMenuItem: MenuItemConstructorOptions = {
     id: 'wallet',
-    label: i18n.t('application-menu.wallet.label'),
+    label: t('application-menu.wallet.label'),
     enabled: isMainWindow,
     submenu: [
-      { id: 'select', label: i18n.t('application-menu.wallet.select'), submenu: selectWalletMenu },
+      { id: 'select', label: t('application-menu.wallet.select'), submenu: selectWalletMenu },
       {
         id: 'create',
-        label: i18n.t('application-menu.wallet.create-new'),
-        click: () => { navTo(URL.CreateWallet) }
+        label: t('application-menu.wallet.create-new'),
+        click: () => { navigateTo(URL.CreateWallet) }
       },
       {
         id: 'import',
-        label: i18n.t('application-menu.wallet.import'),
+        label: t('application-menu.wallet.import'),
         submenu: [
           {
             id: 'import-with-mnemonic',
-            label: i18n.t('application-menu.wallet.import-mnemonic'),
-            click: () => { navTo(URL.ImportMnemonic) }
+            label: t('application-menu.wallet.import-mnemonic'),
+            click: () => { navigateTo(URL.ImportMnemonic) }
           },
           {
             id: 'import-with-keystore',
-            label: i18n.t('application-menu.wallet.import-keystore'),
-            click: () => { navTo(URL.ImportKeystore )},
+            label: t('application-menu.wallet.import-keystore'),
+            click: () => { navigateTo(URL.ImportKeystore) }
           },
+          {
+            id: 'import-with-xpubkey',
+            label: t('application-menu.wallet.import-xpubkey'),
+            click: () => {
+              const window = BrowserWindow.getFocusedWindow()
+              if (window) {
+                CommandSubject.next({ winID: window.id, type: 'import-xpubkey', payload: null, dispatchToUI: false })
+              }
+            }
+          }
         ],
       },
       separator,
       {
         id: 'backup',
-        label: i18n.t('application-menu.wallet.backup'),
+        label: t('application-menu.wallet.backup'),
         enabled: hasCurrentWallet,
         click: () => {
           if (!currentWallet) {
@@ -152,8 +201,22 @@ const updateApplicationMenu = (mainWindow: BrowserWindow | null) => {
         },
       },
       {
+        id: 'export-xpubkey',
+        label: t('application-menu.wallet.export-xpubkey'),
+        enabled: hasCurrentWallet,
+        click: () => {
+          if (!currentWallet) {
+            return
+          }
+          const window = BrowserWindow.getFocusedWindow()
+          if (window) {
+            CommandSubject.next({ winID: window.id, type: 'export-xpubkey', payload: currentWallet.id, dispatchToUI: false })
+          }
+        }
+      },
+      {
         id: 'delete',
-        label: i18n.t('application-menu.wallet.delete'),
+        label: t('application-menu.wallet.delete'),
         enabled: hasCurrentWallet,
         click: () => {
           if (!currentWallet) {
@@ -167,39 +230,56 @@ const updateApplicationMenu = (mainWindow: BrowserWindow | null) => {
 
   const editMenuItem: MenuItemConstructorOptions = {
     id: 'edit',
-    label: i18n.t('application-menu.edit.label'),
+    label: t('application-menu.edit.label'),
     submenu: [
       {
-        label: i18n.t('application-menu.edit.cut'),
+        label: t('application-menu.edit.cut'),
         role: 'cut',
       },
       {
-        label: i18n.t('application-menu.edit.copy'),
+        label: t('application-menu.edit.copy'),
         role: 'copy',
       },
       {
-        label: i18n.t('application-menu.edit.paste'),
+        label: t('application-menu.edit.paste'),
         role: 'paste',
       },
       separator,
       {
-        label: i18n.t('application-menu.edit.selectall'),
+        label: t('application-menu.edit.selectall'),
         role: 'selectAll',
       },
     ],
   }
 
+  const toolsMenuItem: MenuItemConstructorOptions = {
+    id: 'tools',
+    label: t('application-menu.tools.label'),
+    submenu: [
+      {
+        label: t('application-menu.tools.sign-and-verify'),
+        enabled: hasCurrentWallet,
+        click: () => {
+          const currentWallet = walletsService.getCurrent()
+          showWindow(`#/sign-verify/${currentWallet!.id}`, t(`messageBox.sign-and-verify.title`), {
+            width: 900,
+          })
+        }
+      }
+    ]
+  }
+
   const windowMenuItem: MenuItemConstructorOptions = {
     id: 'window',
-    label: i18n.t('application-menu.window.label'),
+    label: t('application-menu.window.label'),
     role: 'window',
     submenu: [
       {
-        label: i18n.t('application-menu.window.minimize'),
+        label: t('application-menu.window.minimize'),
         role: 'minimize',
       },
       {
-        label: i18n.t('application-menu.window.close'),
+        label: t('application-menu.window.close'),
         role: 'close',
       },
     ],
@@ -207,72 +287,80 @@ const updateApplicationMenu = (mainWindow: BrowserWindow | null) => {
 
   const helpSubmenu: MenuItemConstructorOptions[] = [
     {
-      label: i18n.t('application-menu.help.nervos-website'),
+      label: t('application-menu.help.documentation'),
+      click: () => { shell.openExternal(ExternalURL.Doc) }
+    },
+    separator,
+    {
+      label: t('application-menu.help.nervos-website'),
       click: () => { shell.openExternal(ExternalURL.Website) }
     },
     {
-      label: i18n.t('application-menu.help.source-code'),
+      label: t('application-menu.help.source-code'),
       click: () => { shell.openExternal(ExternalURL.Repository) }
     },
     {
-      label: i18n.t('application-menu.help.report-issue'),
+      label: t('application-menu.help.report-issue'),
       click: () => { shell.openExternal(ExternalURL.Issues) }
     },
+    {
+      label: t("application-menu.help.export-debug-info"),
+      click: () => { new ExportDebugController().export() }
+    }
   ]
   if (!isMac) {
     helpSubmenu.push(separator)
     helpSubmenu.push({
       id: 'preference',
-      label: i18n.t('application-menu.help.settings'),
-      click: () => { navTo(URL.Preference) }
+      label: t(SETTINGS_WINDOW_TITLE),
+      click: showSettings,
     })
     helpSubmenu.push({
-      label: i18n.t('application-menu.neuron.check-updates'),
+      label: t('application-menu.neuron.check-updates'),
       enabled: isMainWindow && !UpdateController.isChecking,
       click: () => {
         new UpdateController().checkUpdates()
-        navTo(URL.Preference)
+        showSettings()
       }
     })
     helpSubmenu.push({
       id: 'about',
-      label: i18n.t('application-menu.neuron.about', {
+      label: t('application-menu.neuron.about', {
         app: app.name
       }),
-      role: 'about',
       click: () => { showAbout() }
     })
   }
 
   const helpMenuItem: MenuItemConstructorOptions = {
     id: 'help',
-    label: i18n.t('application-menu.help.label'),
+    label: t('application-menu.help.label'),
     role: 'help',
     submenu: helpSubmenu,
   }
 
   const developMenuItem: MenuItemConstructorOptions = {
     id: 'develop',
-    label: i18n.t('application-menu.develop.develop'),
+    label: t('application-menu.develop.develop'),
     submenu: [
       {
-        label: i18n.t('application-menu.develop.reload'),
+        label: t('application-menu.develop.reload'),
         role: 'reload',
       },
       {
-        label: i18n.t('application-menu.develop.force-reload'),
+        label: t('application-menu.develop.force-reload'),
         role: 'forceReload',
       },
       {
-        label: i18n.t('application-menu.develop.toggle-dev-tools'),
+        label: t('application-menu.develop.toggle-dev-tools'),
         role: 'toggleDevTools',
       },
     ],
   }
 
   const applicationMenuTemplate = env.isDevMode
-    ? [walletMenuItem, editMenuItem, developMenuItem, windowMenuItem, helpMenuItem]
-    : [walletMenuItem, editMenuItem, windowMenuItem, helpMenuItem]
+    ? [walletMenuItem, editMenuItem, developMenuItem, toolsMenuItem, windowMenuItem, helpMenuItem]
+    : [walletMenuItem, editMenuItem, toolsMenuItem, windowMenuItem, helpMenuItem]
 
   if (isMac) {
     applicationMenuTemplate.unshift(appMenuItem)

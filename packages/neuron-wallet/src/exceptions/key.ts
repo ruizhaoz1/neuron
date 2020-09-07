@@ -1,4 +1,4 @@
-import i18n from 'utils/i18n'
+import { t } from 'i18next'
 
 export class UnsupportedCipher extends Error {
   constructor() {
@@ -8,7 +8,7 @@ export class UnsupportedCipher extends Error {
 
 export class InvalidMnemonic extends Error {
   constructor() {
-    super(i18n.t('messages.invalid-mnemonic'))
+    super(t('messages.invalid-mnemonic'))
   }
 }
 

@@ -1,15 +1,17 @@
 @import './layout.scss';
+@import './color.scss';
+@import './mixin.scss';
 
 * {
-  user-select: none;
   outline: none !important;
   -webkit-tap-highlight-color: none !important;
   cursor: default !important;
+  user-select: none;
 }
 
-[type=button],
-[type=reset],
-[type=submit],
+[type='button'],
+[type='reset'],
+[type='submit'],
 button {
   -webkit-appearance: none !important;
 }
@@ -24,33 +26,28 @@ html {
 }
 
 body {
+  @include regular-text;
   margin: 0;
   padding: 0;
-  background: white;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  background: #f8f8f8;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-navbar {
-  border-bottom: solid 1px #ccc;
-}
-
-.main-content {
-  background-color: white;
-}
-
 .label {
-  padding: 3px 4px;
-  font-size: 12px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 18px;
+  width: 58px;
+  padding: 0 4px;
+  font-size: 9px;
   font-weight: 600;
-  line-height: 1;
   color: #fff;
   border-radius: 2px;
-  box-shadow: inset 0 -1px 0 rgba(27, 31, 35, .12);
+  box-shadow: inset 0 -1px 0 rgba(27, 31, 35, 0.12);
   text-transform: capitalize;
+  margin-left: 10px;
 
   &.primary {
     background-color: #6f42c1;
@@ -61,7 +58,7 @@ navbar {
   }
 
   &.third {
-    background-color: #78909C;
+    background-color: #78909c;
   }
 }
 
@@ -72,12 +69,8 @@ navbar {
   }
 }
 
-.monospacedFont {
-  font-family: monospace;
-}
-
 .ms-DetailsHeader-cell:hover {
-  background-color: inherit
+  background-color: inherit;
 }
 
 .listNoHover {
@@ -100,6 +93,10 @@ navbar {
       align-items: center;
       display: none;
       background-color: transparent;
+
+      span {
+        pointer-events: none;
+      }
     }
 
     &:hover {
@@ -108,32 +105,118 @@ navbar {
       }
     }
   }
-
-
 }
 
 .textOverflow {
+  word-break: keep-all;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+// hack fabric toggle
+.ms-Toggle {
+  label {
+    color: #000 !important;
+  }
+}
+
+.ms-Toggle.is-checked .ms-Toggle-background {
+  background: var(--nervos-green) !important;
+}
+
+// hack fabric dropdown
+.ms-Dropdown-title {
+  border-color: #000 !important;
+}
+.ms-Dropdown-item {
+  color: #000 !important;
+}
+.ms-Dropdown-container {
+  label {
+    font-size: 0.875rem !important;
+    color: #000 !important;
+  }
+}
+
+// hack search field
+.ms-SearchBox {
+  height: 26px;
+  input {
+    font-size: 0.75rem;
+  }
+}
+.ms-SearchBox.is-active,
+.ms-TextField.is-active {
+  border-color: var(--nervos-green) !important;
+
+  .ms-TextField-fieldGroup {
+    border-color: var(--nervos-green) !important;
+  }
+}
+
+.ms-SearchBox-iconContainer {
+  color: var(--nervos-green);
+}
+
+// hack fabric pivot
+.ms-Pivot-link.is-selected:before {
+  background-color: var(--nervos-green);
+}
+
+// hack fabric choice field
+.ms-ChoiceField-field {
+  &::before {
+    top: 4px;
+    left: 3px;
+  }
+  &::after {
+    top: 9px !important;
+    left: 8px !important;
+  }
+}
+.ms-ChoiceField-field.is-checked {
+  &::before,
+  &::after {
+    border-color: var(--nervos-green);
+  }
+}
+
+// hack fabric slider
+.ms-Slider-active {
+  background: var(--nervos-green) !important;
+  filter: brightness(0.9);
+}
+
+.ms-Slider-inactive {
+  background: rgb(200, 198, 196) !important;
+}
+
+.ms-Slider-thumb {
+  background: var(--nervos-green) !important;
+  border: none !important;
+  top: -4px;
+  width: 12px;
+  height: 12px;
+  z-index: 1;
+
+  &:hover {
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+  }
 }
 
 // hack fabric ui experimental pagination style
 .ms-Pagination-container {
   position: relative;
+  flex-direction: row-reverse;
+  justify-content: space-between;
 
-  &>div:last-child {
-    position: absolute;
-    right: 0;
-    top: 50%;
-    transform: translateY(-50%);
-  }
-
-  button[aria-selected=false] {
+  button[aria-selected='false'] {
     color: #0078d4 !important;
     text-decoration: underline;
   }
 
-  button[aria-selected=true] {
+  button[aria-selected='true'] {
     color: rgb(96, 94, 92) !important;
     text-decoration: none !important;
   }

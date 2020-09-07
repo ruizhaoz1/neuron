@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react'
-import { Route, RouteComponentProps } from 'react-router-dom'
+import { useHistory } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
-import { useState } from 'states/stateProvider'
-import { StateDispatch } from 'states/stateProvider/reducer'
+import { useState as useGlobalState, useDispatch } from 'states'
 
 import Overview from 'components/Overview'
 import WalletWizard from 'components/WalletWizard'
@@ -12,123 +11,127 @@ import Send from 'components/Send'
 import Receive from 'components/Receive'
 import History from 'components/History'
 import Transaction from 'components/Transaction'
-import Settings from 'components/Settings'
 import Addresses from 'components/Addresses'
-import NetworkEditor from 'components/NetworkEditor'
-import WalletEditor from 'components/WalletEditor'
 import LaunchScreen from 'components/LaunchScreen'
 import PasswordRequest from 'components/PasswordRequest'
 import NervosDAO from 'components/NervosDAO'
+import SpecialAssetList from 'components/SpecialAssetList'
+import SUDTAccountList from 'components/SUDTAccountList'
+import SUDTSend from 'components/SUDTSend'
+import SUDTReceive from 'components/SUDTReceive'
 
-import { Routes } from 'utils/const'
+import { RoutePath, useOnDefaultContextMenu, useRoutes, useOnLocaleChange } from 'utils'
 
 import { useSubscription, useSyncChainData, useOnCurrentWalletChange } from './hooks'
 
 export const mainContents: CustomRouter.Route[] = [
   {
     name: `Launch`,
-    path: Routes.Launch,
+    path: RoutePath.Launch,
     exact: true,
-    comp: LaunchScreen,
+    component: LaunchScreen,
   },
   {
     name: `General`,
-    path: Routes.Overview,
+    path: RoutePath.Overview,
     exact: true,
-    comp: Overview,
+    component: Overview,
   },
   {
     name: `Send`,
-    path: Routes.Send,
+    path: RoutePath.Send,
     params: `/:address?`,
     exact: false,
-    comp: Send,
+    component: Send,
   },
   {
     name: `Receive`,
-    path: Routes.Receive,
+    path: RoutePath.Receive,
     params: `/:address?`,
     exact: false,
-    comp: Receive,
+    component: Receive,
   },
   {
     name: `History`,
-    path: Routes.History,
+    path: RoutePath.History,
     exact: false,
-    comp: History,
+    component: History,
   },
   {
     name: `Transaction`,
-    path: Routes.Transaction,
+    path: RoutePath.Transaction,
     params: `/:hash`,
     exact: false,
-    comp: Transaction,
+    component: Transaction,
   },
   {
     name: `Addresses`,
-    path: Routes.Addresses,
+    path: RoutePath.Addresses,
     exact: false,
-    comp: Addresses,
-  },
-  {
-    name: `Settings`,
-    path: Routes.Settings,
-    exact: false,
-    comp: Settings,
-  },
-  {
-    name: `NetworkEditor`,
-    path: Routes.NetworkEditor,
-    params: '/:id',
-    exact: false,
-    comp: NetworkEditor,
-  },
-  {
-    name: `WalletEditor`,
-    path: Routes.WalletEditor,
-    params: '/:id',
-    exact: false,
-    comp: WalletEditor,
+    component: Addresses,
   },
   {
     name: `WalletWizard`,
-    path: Routes.WalletWizard,
+    path: RoutePath.WalletWizard,
     exact: false,
-    comp: WalletWizard,
+    component: WalletWizard,
   },
   {
     name: `ImportKeystore`,
-    path: Routes.ImportKeystore,
+    path: RoutePath.ImportKeystore,
     exact: false,
-    comp: ImportKeystore,
+    component: ImportKeystore,
   },
   {
     name: `PasswordRequest`,
     path: '/',
     exact: false,
-    comp: PasswordRequest,
+    component: PasswordRequest,
   },
   {
     name: `NervosDAO`,
-    path: Routes.NervosDAO,
+    path: RoutePath.NervosDAO,
     exact: true,
-    comp: NervosDAO,
+    component: NervosDAO,
+  },
+  {
+    name: `SpecialAssets`,
+    path: RoutePath.SpecialAssets,
+    exact: false,
+    component: SpecialAssetList,
+  },
+  {
+    name: `SUDTAccountList`,
+    path: RoutePath.SUDTAccountList,
+    exact: true,
+    component: SUDTAccountList,
+  },
+  {
+    name: `SUDTSend`,
+    path: RoutePath.SUDTSend,
+    params: `/:accountId?`,
+    exact: false,
+    component: SUDTSend,
+  },
+  {
+    name: `SUDTReceive`,
+    path: RoutePath.SUDTReceive,
+    exact: false,
+    component: SUDTReceive,
   },
 ]
 
-const MainContent = ({
-  history,
-  dispatch,
-}: React.PropsWithoutRef<{ dispatch: StateDispatch } & RouteComponentProps>) => {
-  const neuronWalletState = useState()
+const MainContent = () => {
+  const history = useHistory()
   const {
     app: { isAllowedToFetchList = true },
     wallet: { id: walletID = '' },
     chain,
     settings: { networks = [] },
-  } = neuronWalletState
+  } = useGlobalState()
+  const dispatch = useDispatch()
   const { networkID } = chain
-  const [, i18n] = useTranslation()
+  const [t, i18n] = useTranslation()
 
   useSubscription({
     walletID,
@@ -151,25 +154,14 @@ const MainContent = ({
   useOnCurrentWalletChange({
     walletID,
     chain,
-    i18n,
     history,
     dispatch,
   })
+  useOnLocaleChange(i18n)
+  const onContextMenu = useOnDefaultContextMenu(t)
+  const routes = useRoutes(mainContents)
 
-  return (
-    <>
-      {mainContents.map(container => (
-        <Route
-          exact={container.exact}
-          path={`${container.path}${container.params || ''}`}
-          key={container.name}
-          render={routerProps => {
-            return <container.comp {...routerProps} {...neuronWalletState} dispatch={dispatch} />
-          }}
-        />
-      ))}
-    </>
-  )
+  return <div onContextMenu={onContextMenu}>{routes}</div>
 }
 
 MainContent.displayName = 'Main'

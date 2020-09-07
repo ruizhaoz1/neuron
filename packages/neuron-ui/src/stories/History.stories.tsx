@@ -1,31 +1,26 @@
 import React from 'react'
-import { Route, RouteComponentProps } from 'react-router-dom'
 import { storiesOf } from '@storybook/react'
-import { withKnobs, text, number } from '@storybook/addon-knobs'
-import { action } from '@storybook/addon-actions'
 import StoryRouter from 'storybook-react-router'
+import { withKnobs, text, number, boolean } from '@storybook/addon-knobs'
+import { action } from '@storybook/addon-actions'
 import History from 'components/History'
-import initStates from 'states/initStates'
-import { StateWithDispatch } from 'states/stateProvider/reducer'
+import { initStates, NeuronWalletContext } from 'states'
 import transactions from './data/transactions'
 
-const stateTemplate = {
-  ...initStates,
-  dispatch: (dispatchAction: any) => action(dispatchAction),
-}
+const dispatch = (a: any) => action('Dispatch')(JSON.stringify(a, null, 2))
 
-const states: { [title: string]: StateWithDispatch } = {
+const states: { [title: string]: any } = {
   'Has not transactions': {
-    ...stateTemplate,
+    ...initStates,
     chain: {
-      ...stateTemplate.chain,
-      transactions: { ...stateTemplate.chain.transactions, items: transactions['Empty List'] },
+      ...initStates.chain,
+      transactions: { ...initStates.chain.transactions, items: transactions['Empty List'] },
     },
   },
   '1 item and PageNo.1': {
-    ...stateTemplate,
+    ...initStates,
     chain: {
-      ...stateTemplate.chain,
+      ...initStates.chain,
       transactions: {
         pageNo: 1,
         pageSize: 15,
@@ -36,9 +31,9 @@ const states: { [title: string]: StateWithDispatch } = {
     },
   },
   '15 items and PageNo.1': {
-    ...stateTemplate,
+    ...initStates,
     chain: {
-      ...stateTemplate.chain,
+      ...initStates.chain,
       transactions: {
         pageNo: 1,
         pageSize: 15,
@@ -49,9 +44,9 @@ const states: { [title: string]: StateWithDispatch } = {
     },
   },
   '16 items and PageNo.2': {
-    ...stateTemplate,
+    ...initStates,
     chain: {
-      ...stateTemplate.chain,
+      ...initStates.chain,
       transactions: {
         pageNo: 2,
         pageSize: 15,
@@ -62,9 +57,9 @@ const states: { [title: string]: StateWithDispatch } = {
     },
   },
   '200 items and PageNo.1': {
-    ...stateTemplate,
+    ...initStates,
     chain: {
-      ...stateTemplate.chain,
+      ...initStates.chain,
       transactions: {
         pageNo: 1,
         pageSize: 15,
@@ -75,9 +70,9 @@ const states: { [title: string]: StateWithDispatch } = {
     },
   },
   '200 items and pageNo.2': {
-    ...stateTemplate,
+    ...initStates,
     chain: {
-      ...stateTemplate.chain,
+      ...initStates.chain,
       transactions: {
         pageNo: 2,
         pageSize: 15,
@@ -88,9 +83,9 @@ const states: { [title: string]: StateWithDispatch } = {
     },
   },
   '200 items and pageNo.14': {
-    ...stateTemplate,
+    ...initStates,
     chain: {
-      ...stateTemplate.chain,
+      ...initStates.chain,
       transactions: {
         pageNo: 14,
         pageSize: 15,
@@ -102,21 +97,21 @@ const states: { [title: string]: StateWithDispatch } = {
   },
 }
 
-const HistoryWithRouteProps = (props: StateWithDispatch) => (
-  <Route path="/" render={(routeProps: RouteComponentProps) => <History {...routeProps} {...props} />} />
-)
-
 const stories = storiesOf('History', module).addDecorator(StoryRouter())
 
-Object.entries(states).forEach(([title, props]) => {
-  stories.add(title, () => <HistoryWithRouteProps {...props} />)
+Object.entries(states).forEach(([title, state]) => {
+  stories.add(title, () => (
+    <NeuronWalletContext.Provider value={{ state, dispatch }}>
+      <History />
+    </NeuronWalletContext.Provider>
+  ))
 })
 
 stories.addDecorator(withKnobs).add('With knobs', () => {
-  const props = {
-    ...stateTemplate,
+  const state = {
+    ...initStates,
     chain: {
-      ...stateTemplate.chain,
+      ...initStates.chain,
       transactions: {
         pageNo: number('Page No', 14),
         pageSize: number('Page Size', 15),
@@ -131,10 +126,15 @@ stories.addDecorator(withKnobs).add('With knobs', () => {
           description: text(`${idx}-Description`, tx.description),
           blockNumber: text(`${idx}-BlockNumber`, tx.blockNumber),
           status: text(`${idx}-Status`, tx.status) as 'pending' | 'success' | 'failed',
+          nervosDao: boolean('nervos dao', true),
         })),
         keywords: '',
       },
     },
   }
-  return <HistoryWithRouteProps {...props} />
+  return (
+    <NeuronWalletContext.Provider value={{ state, dispatch }}>
+      <History />
+    </NeuronWalletContext.Provider>
+  )
 })

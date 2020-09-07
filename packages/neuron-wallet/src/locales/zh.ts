@@ -18,10 +18,12 @@ export default {
         'create-new': '创建新钱包',
         import: '导入钱包',
         backup: '备份当前钱包',
+        'export-xpubkey': '导出 Extended Public Key',
         delete: '删除当前钱包',
         'change-password': '修改密码',
         'import-mnemonic': '导入助记词',
         'import-keystore': '导入 Keystore 文件',
+        'import-xpubkey': '导入 Extended Public Key',
       },
       edit: {
         label: '编辑',
@@ -29,6 +31,10 @@ export default {
         copy: '复制',
         paste: '粘贴',
         selectall: '全部选中',
+      },
+      tools: {
+        label: "工具",
+        "sign-and-verify": "签名/验签信息",
       },
       window: {
         label: '窗口',
@@ -40,7 +46,9 @@ export default {
         'nervos-website': 'Nervos 网站',
         'source-code': '源代码',
         'report-issue': '报告问题',
+        documentation: '使用文档',
         settings: '设置',
+        'export-debug-info': '导出调试信息',
       },
       develop: {
         develop: '开发',
@@ -54,47 +62,46 @@ export default {
       wallets: '钱包',
     },
     messages: {
-      'failed-to-load-networks': '加载节点失败',
-      'Networks-will-be-reset': '节点列表将被重置',
-      'wallet-password-less-than-min-length': '密码应至少包含{{minPasswordLength}}位字符',
-      'wallet-password-more-than-max-length': '密码不能超过{{maxPasswordLength}}位字符',
-      'wallet-password-letter-complexity': '密码包含大写字母、小写字母、数字、特殊符号的至少三类',
-      'current-wallet-not-set': '未设置当前钱包',
-      'incorrect-password': '密码不正确',
-      'current-key-has-no-data': '当前 Key 文件缺少数据',
-      'invalid-address': '地址 {{address}} 不合法',
-      'codehash-not-loaded': 'codehash 还未加载完成',
-      'wallet-not-found': '未找到钱包 {{id}}',
-      'no-current-wallet': '没有默认钱包',
-      'wallet-incorrect-password': '密码错误',
-      'failed-to-create-mnemonic': '创建助记词失败',
-      'failed-to-activate-wallet': '设置默认钱包失败',
-      'failed-to-delete-wallet': '删除钱包失败',
-      'network-not-found': '未找到 ID 为 {{id}} 的网络设置',
-      'invalid-name': '{{field}} 名称不合法',
-      'default-network-unremovable': '默认网络不可删除',
-      'lack-of-default-network': '缺少默认网络',
-      'current-network-not-set': '未设置当前网络',
-      'transaction-not-found': '未找到交易 {{hash}}',
-      'service-not-respond': '{{service}} 服务未响应',
-      'parameters-of-sending-transactions-are-required': '缺少交易参数',
-      'is-required': '缺少 {{field}}',
-      'invalid-format': '{{field}} 格式不正确',
-      'used-name': '{{field}} 名称已存在',
-      'missing-required-argument': '缺少必要参数',
-      'save-keystore': '保存 Keystore 文件',
-      'invalid-mnemonic': '助记词不合法',
-      'unsupported-cipher': '不支持的 Cipher',
-      'capacity-not-enough': '余额不足',
-      'capacity-not-enough-for-change': '余额不足以支付找零',
-      'capacity-too-small': '金额小于最低金额',
-      'should-be-type-of': '{{field}} 应该为 {{type}} 类型',
-      'invalid-keystore': 'Keystore 格式不正确',
-      'invalid-json': 'JSON 文件格式不正确',
-      'cell-is-not-yet-live': 'Cell 尚未激活',
-      'transaction-is-not-committed-yet': '交易未提交',
-      'mainnet-address-required': '{{address}} 不是主网地址',
-      'testnet-address-required': '{{address}} 不是测试网地址'
+      'failed-to-load-networks': '加载节点失败。',
+      'Networks-will-be-reset': '节点列表将被重置。',
+      'wallet-password-less-than-min-length': '密码应至少包含{{minPasswordLength}}位字符。',
+      'wallet-password-more-than-max-length': '密码不能超过{{maxPasswordLength}}位字符。',
+      'wallet-password-letter-complexity': '密码包含大写字母、小写字母、数字、特殊符号的至少三类。',
+      'current-wallet-not-set': '未设置当前钱包。',
+      'incorrect-password': '密码不正确。',
+      'invalid-address': '地址 {{address}} 不合法。',
+      'codehash-not-loaded': 'codehash 还未加载完成。',
+      'wallet-not-found': '未找到钱包 {{id}}。',
+      'failed-to-create-mnemonic': '创建助记词失败。',
+      'network-not-found': '未找到 ID 为 {{id}} 的网络设置。',
+      'invalid-name': '{{field}} 名称不合法。',
+      'default-network-unremovable': '默认网络不可删除。',
+      'lack-of-default-network': '缺少默认网络。',
+      'current-network-not-set': '当前 CKB 节点 RPC 地址未设置。',
+      'transaction-not-found': '未找到交易 {{hash}}。',
+      'is-required': '缺少 {{field}}。',
+      'invalid-format': '{{field}} 格式不正确。',
+      'used-name': '{{field}} 名称已存在，请输入其它名称。',
+      'missing-required-argument': '缺少必要参数。',
+      'save-keystore': '保存 Keystore 文件。',
+      'save-extended-public-key': '保存 Extended Public Key。',
+      'import-extended-public-key': '导入 Extended Public Key。',
+      'invalid-mnemonic': '助记词不合法，请检查。',
+      'unsupported-cipher': '不支持的 Cipher。',
+      'capacity-not-enough': '余额不足。',
+      'capacity-not-enough-for-change': "您需要有足够的余额来支付找零（至少 61 CKBytes），或者点击 'Max' 按钮发送全部余额。",
+      'live-capacity-not-enough': '可用余额不足，请等待上一笔交易上链。',
+      'capacity-too-small': '最小转账金额为 {{bytes}} CKBytes。',
+      'should-be-type-of': '{{field}} 应该为 {{type}} 类型。',
+      'invalid-keystore': 'Keystore 格式不正确，请检查文件完整性。',
+      'invalid-json': 'JSON 文件格式不正确，请检查文件完整性。',
+      'cell-is-not-yet-live': '请耐心等待上一笔交易被区块链确认。',
+      'transaction-is-not-committed-yet': '无法在链上找到交易所需要的 cell，请确保相关的交易已经被区块链确认。',
+      'mainnet-address-required': '{{address}} 不是主网地址。',
+      'testnet-address-required': '{{address}} 不是测试网地址。',
+      'address-not-found': '当前钱包地址列表中不包含输入地址，请检查钱包设置或等待同步完成。',
+      'target-output-not-found': "无法找到与指定地址关联的账户钱包。",
+      'acp-same-account': "请设置与转出账户不同的收款账户。"
     },
     messageBox: {
       button: {
@@ -120,6 +127,18 @@ export default {
       transaction: {
         title: '交易: {{hash}}',
       },
+      'sign-and-verify': {
+        title: '签名/验签信息'
+      },
+      'ckb-dependency': {
+        title: '内置 CKB 节点',
+        message: '缺少必要的依赖',
+        detail: 'Neuron 内置的 CKB 节点需要安装 Microsoft Visual C++ Redistributable 才能正常运行。您需要安装该组件来启用内置节点。如果您使用外部节点，也可以跳过该步骤。',
+        buttons: {
+          'skip': '跳过',
+          'install-and-exit': '安装并退出'
+        }
+      },
     },
     prompt: {
       password: {
@@ -135,6 +154,38 @@ export default {
       yes: '是',
       no: '否',
       ok: '确定',
+      error: '错误'
     },
+    'export-debug-info': {
+      'export-debug-info': '导出调试信息',
+      'debug-info-exported': '调试信息已被导出至 {{ file }}'
+    },
+    about: {
+      "app-version": "{{name}} 版本: {{version}}",
+      "ckb-client-version": "CKB 节点版本: {{version}}"
+    },
+    settings: {
+      title: {
+        normal: '设置',
+        mac: '偏好设置'
+      }
+    },
+    'export-transactions': {
+      'export-transactions': '导出交易历史',
+      'transactions-exported': '{{total}} 条交易记录已被导出至 {{file}}',
+      column: {
+        "time": "时间",
+        "block-number": "区块高度",
+        "tx-hash": "交易哈希",
+        "tx-type": "交易类型",
+        "amount": "CKB 金额",
+        "udt-amount": "UDT 金额",
+        "description": "备注"
+      },
+      "tx-type": {
+        "send": "转账",
+        "receive": "收款"
+      }
+    }
   },
 }

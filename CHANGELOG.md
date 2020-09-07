@@ -1,3 +1,416 @@
+# 0.32.2 (2020-08-22)
+[CKB v0.32.0](https://github.com/nervosnetwork/ckb/releases/tag/v0.32.0) was released on May 22nd, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+
+### Bug fixes
+
+* Fix a breaking change by lumos indexer which leads to a bug that it can't make transfers from asset accounts.
+
+
+# 0.32.1 (2020-08-10)
+[CKB v0.32.0](https://github.com/nervosnetwork/ckb/releases/tag/v0.32.0) was released on May 22nd, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+
+### Bug fixes
+
+* Upgrade bundled lumos indexer version to 0.7.4 to support connecting node via https.
+
+
+# 0.32.0 (2020-07-31)
+
+### Bundled CKB node
+
+[CKB v0.32.0](https://github.com/nervosnetwork/ckb/releases/tag/v0.32.0) was released on May 22nd, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+
+### New features
+
+* Detect vcredist on Windows when user launches Neuron.
+* Enable the button of exporting transaction history.
+* Support two modes for clearing caches: Refresh cache / Fully rebuild index.
+* UI tune for pop-up windows.
+* Share token info across different wallets.
+* Add a link of `Deposit rules` on `Nervos DAO` page.
+* Remove the FAQ from menu and update docs link.
+* Order the `Completed` DAO records by unlock time in desc.
+
+### Syncing
+
+It has adopted a brand new indexing mechanism, which can significantly speed up the cache indexing process. The caches will be rebuilt for the first time, but it should be much faster than the previous versions (up to 3-4x on macOS, Windows and Linux).
+
+### Bug fixes
+
+* Fixed minor bugs on `History` page.
+* Fixed some Traditional Chinese words.
+
+
+# 0.32.0-rc1 (2020-07-21)
+
+This is an RC version to preview the changes in the next release.
+
+### Bundled CKB node
+
+[CKB v0.32.0](https://github.com/nervosnetwork/ckb/releases/tag/v0.32.0) was released on May 22nd, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+
+### New features
+
+* Detect vcredist on Windows when user launches Neuron.
+* Enable the button of exporting transaction history.
+* Support two modes for clearing caches: Refresh cache / Fully rebuild index.
+* UI tune for pop-up windows.
+* Share token info across different wallets.
+* Add a link of `Deposit rules` on `Nervos DAO` page.
+* Remove the FAQ from menu and update docs link.
+* Order the `Completed` DAO records by unlock time in desc.
+
+### Syncing
+
+It has adopted a brand new indexing mechanism, which can significantly speed up the cache indexing process. The caches will be rebuilt for the first time, but it should be much faster than the previous versions (up to 3-4x on macOS, Windows and Linux).
+
+### Bug fixes
+
+* Fixed minor bugs on `History` page.
+* Fixed some Traditional Chinese words.
+
+
+# 0.32.0-beta.1 (2020-07-04)
+
+This is a beta version to preview the changes in the next release and may not be stable. It is not suggested to install this version for asset management. Welcome any questions or suggestions.
+
+### Bundled CKB node
+
+[CKB v0.32.0](https://github.com/nervosnetwork/ckb/releases/tag/v0.32.0) was released on May 22nd, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+
+### New features
+
+* Detect vcredist on Windows when user launches Neuron.
+* Enable the button of exporting transaction history.
+* Support two modes for clearing caches: Refresh cache / Fully rebuild index.
+* UI tune for pop-up windows.
+* Share token info across different wallets.
+* Add a link of `Deposit rules` on `Nervos DAO` page.
+
+### Syncing
+
+It has adopted a brand new indexing mechanism, which can significantly speed up the cache indexing process. The caches will be rebuilt for the first time, but it should be much faster than the previous versions (up to 3-4x on macOS, Windows and Linux).
+
+### Bug fixes
+
+* Fixed minor bugs on `History` page.
+* Fixed some Traditional Chinese words.
+
+
+# 0.31.0 (2020-06-15)
+
+### Bundled CKB node
+
+[CKB v0.32.0](https://github.com/nervosnetwork/ckb/releases/tag/v0.32.0) was released on May 22nd, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+
+### New features
+
+We added several new features with this version:
+
+* New style of logo.
+* Make the `Settings` window to be independent with new style.
+* Add Language Switching function in `Settings` - `General` page.
+* Export more bundled CKB logs for debug info.
+* Include the bundled CKB version on the `About Neuron` window.
+* Replace the `Expected speed` drop-down box with `Quick Pick Price` in `Advanced fee settings`.
+* Add `Asset Account` feature for `Aggron Testnet` only.
+
+### User Experience
+
+We also make some improvements for better user expeierence:
+
+* Optimize the `Copy` component, also remove unnecessary normal context menu (right-click menu).
+* Display password error in password dialog.
+
+
+# 0.31.0-rc2 (2020-06-08)
+
+### Bundled CKB node
+
+[CKB v0.32.0](https://github.com/nervosnetwork/ckb/releases/tag/v0.32.0) was released on May 22nd, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+
+### New features
+
+We added several new features with this version:
+
+* New style of logo.
+* Enable exporting transaction history.
+* Make the `Settings` window to be independent with new style.
+* Add Language Switching function in `Settings` - `General` page.
+* Export more bundled CKB logs for debug info.
+* Include the bundled CKB version on the `About Neuron` window.
+* Replace the `Expected speed` drop-down box with `Quick Pick Price` in `Advanced fee settings`.
+* Add `Asset Account` feature for `Aggron Testnet` only.
+
+### User Experience
+
+We also make some improvements for better user expeierence:
+
+* Optimize the `Copy` component, also remove unnecessary normal context menu (right-click menu).
+* Display password error in password dialog.
+
+
+# 0.31.0-rc1 (2020-05-29)
+
+### Bundled CKB node
+
+[CKB v0.32.0](https://github.com/nervosnetwork/ckb/releases/tag/v0.32.0) was released on May 22nd, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+
+### New features
+
+We added several new features with this version:
+
+* New style of logo.
+* Enable exporting transaction history.
+* Make the `Settings` window to be independent with new style.
+* Add Language Switching function in `Settings` - `General` page.
+* Export more bundled CKB logs for debug info.
+* Include the bundled CKB version on the `About Neuron` window.
+* Replace the `Expected speed` drop-down box with `Quick Pick Price` in `Advanced fee settings`.
+
+### User Experience
+
+We also make some improvements for better user expeierence:
+
+* Optimize the `Copy` component, also remove unnecessary normal context menu (right-click menu).
+* Display password error in password dialog.
+
+
+# 0.30.0 (2020-05-15)
+
+### Bundled CKB node
+
+[CKB v0.31.1](https://github.com/nervosnetwork/ckb/releases/tag/v0.31.1) was released on Apr 24th, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+[CKB v0.31.1](https://github.com/nervosnetwork/ckb/releases/tag/v0.31.1) includes a performance enhancement patch. It may speed up Neuron sync speed.
+
+### New features
+
+We added several new features with this version:
+
+* Bypass password verification when deleting/exporting watch only wallet.
+* Skip rescan when importing existing wallet.
+* New style of DAO page.
+* Remove Settings from the left side bar, which can be found from menu (Windows - Help, Mac - Preferences).
+* Add an Experimental divider on the left side bar.
+
+### Bug fixes
+* Optimized the status warning message when launch.
+* Added operation system info in the Debug info.
+
+
+# 0.30.0-rc2 (2020-04-29)
+
+This is an RC version to preview the changes in the next release.
+
+### Bundled CKB node
+
+CKB v0.31.1 was released on Apr 24th, 2020. This version of CKB node is now bundled and preconfigured in Neuron. 
+CKB v0.31.1 includes a performance enhancement patch. It may speed up Neuron sync speed.
+
+### New features
+
+We added several new features with this version:
+
+* Bypass password verification when deleting/exporting watch only wallet.
+* Skip rescan when importing existing wallet.
+* New style of DAO page.
+* Remove Settings from the left side bar, which can be found from menu (Windows - Help, Mac - Preferences).
+* Add an Experimental divider on the left side bar.
+
+### Bug fixes
+* Optimized the status warning message when launch.
+* Added operation system info in the Debug info.
+
+
+# 0.29.0 (2020-03-31)
+
+### Bundled CKB node
+
+CKB v0.29.0 was released on Feb 26th, 2020. This version of CKB node is now bundled and preconfigured in Neuron.
+
+### New features
+
+We added several new features with this version:
+
+* Sign/Verify message: Sign a message with an address and its private key, or verify a signed message with an address and its public key.
+* Customized assets: List customized assets that have non-standard cells, e.g. cells with locktime. Holders with locked assets from the genesis block would be able to view them now.
+* Transaction with locktime: Send a transaction that could only be released after the locktime.
+* Synced block number: Hover over the sync status area on the left bottom and check the CKB tip block number and Neuron synced block number, to see the process of the syncing.
+
+### Performance tweak
+
+Thanks to the community we have found and fixed a serious performance issue. Miner wallets usually receive transactions with huge amount of inputs. When syncing this kind of wallets Neuron became very slow and unresponsive, and couldn't calculate the balance correctly. With this release we've tweaked the sync process, making it run faster and handle transactions with many inputs/outputs properly.
+
+### Electron
+
+We updated Electron to 7.1.14.
+
+### Bug fixes
+
+* Fixed serveral syncing issues causing incorrect balance.
+* Fixed a bug that when clearing cache transaction description would be lost.
+
+
+# 0.29.0-rc3 (2020-03-24)
+
+This is an RC version to preview the changes in the next release.
+
+### Bundled CKB node
+
+CKB v0.29.0 was released on Feb 26th, 2020. This version of CKB node is now bundled and preconfigured in Neuron.
+
+### New features
+
+We added several new features with this version:
+
+* Sign/Verify message: Sign a message with an address and its private key, or verify a signed message with an address and its public key.
+* Customized assets: List customized assets that have non-standard cells, e.g. cells with locktime. Holders with locked assets from the genesis block would be able to view them now.
+* Transaction with locktime: Send a transaction that could only be released after the locktime.
+* Synced block number: Hover over the sync status area on the left bottom and check the CKB tip block number and Neuron synced block number, to see the process of the syncing.
+
+### Performance tweak
+
+Thanks to the community we have found and fixed a serious performance issue. Miner wallets usually receive transactions with huge amount of inputs. When syncing this kind of wallets Neuron became very slow and unresponsive, and couldn't calculate the balance correctly. With this release we've tweaked the sync process, making it run faster and handle transactions with many inputs/outputs properly.
+
+### Bug fixes
+
+* Fixed serveral syncing issues causing incorrect balance.
+* Fixed a bug that when clearing cache transaction description would be lost.
+
+
+# 0.29.0-rc2 (2020-03-10)
+
+This is an RC version to preview the changes in the next release.
+
+### Bundled CKB node
+
+CKB v0.29.0 was released on Feb 26th, 2020. This version of CKB node is now bundled and preconfigured in Neuron.
+
+### New features
+
+We added several new features with this version:
+
+* Sign/Verify message: Sign a message with an address and its private key, or verify a signed message with an address and its public key.
+* Customized assets: List customized assets that have non-standard cells, e.g. cells with locktime. Holders with locked assets from the genesis block would be able to view them now.
+* Transaction with locktime: Send a transaction that could only be released after the locktime.
+
+### Performance tweak
+
+Thanks to the community we have found and fixed a serious performance issue. Miner wallets usually receive transactions with huge amount of inputs. When syncing this kind of wallets Neuron became very slow and unresponsive, and couldn't calculate the balance correctly. With this release we've tweaked the sync process, making it run faster and handle transactions with many inputs/outputs properly.
+
+
+
+# 0.29.0-rc1 (2020-03-02)
+
+This is an RC version to preview the changes in the next release.
+
+### Bundled CKB node
+
+CKB v0.29.0 was released on Feb 26th, 2020. This version of CKB node is now bundled and preconfigured in Neuron.
+
+### New features
+
+We added several new features with this version:
+
+* Sign/Verify message: Sign a message with an address and its private key, or verify a signed message with an address and its public key.
+* Customized assets: List customized assets that have non-standard cells, e.g. cells with locktime.
+* Transaction with locktime: Send a transaction that could only be released after the locktime.
+
+### Performance tweak
+
+Thanks to the community we have found and fixed a serious performance issue. Miner wallets usually receive transactions with huge amount of inputs. When syncing this kind of wallets Neuron became very slow and unresponsive, and couldn't calculate the balance correctly. With this release we've tweaked the sync process, making it run faster and handle transactions with many inputs/outputs properly.
+
+
+
+# 0.28.0 (2020-02-13)
+
+### Bundled CKB node
+
+CKB v0.28.0 was released on Feb 4th, 2020. This version of CKB node is now bundled and preconfigured in Neuron.
+
+### Full Payload Format address
+
+Full Payload Format (long) address support is ready with this release. For those of you who are curious about what long address is, let's see an example:
+
+Before this release, Neuron only supported Short Payload Format (short) address, e.g., `ckb1qyqt8xaupvm8837nv3gtc9x0ekkj64vud3jqfwyw5v`.
+
+From this release, Neuron will support Full Payload Format (long) address as well, e.g.,  `ckb1qjda0cr08m85hc8jlnfp3zer7xulejywt49kt2rr0vthywaa50xw3vumhs9nvu786dj9p0q5elx66t24n3kxgj53qks`.
+
+### Extended public key
+
+We've added a new feature to export and import extended public key for a wallet. A wallet imported by extended public key runs in watch only mode. It can sync, show balance and transaction histories as a regular wallet, but it cannot sign and send transaction.
+
+Please note that for this release we didn't implement any UI limitations to wallet imported by extended public key. This means you could still try to send transaction from it; but when you do so, it would fail when verifying your wallet password.
+
+### Electron
+
+We updated Electron to 7.1.11.
+
+
+
+# [0.27.0](https://github.com/nervosnetwork/neuron/compare/v0.26.3...v0.27.0) (2020-01-23)
+
+Happy Spring Festival!
+
+### Bundled CKB node
+
+CKB v0.27.0 was released on Jan 10th, 2020. This version of CKB node is now bundled and preconfigured in Neuron.
+
+### Electron
+
+We updated to Electron 7.1.9, which has fixed a bug that would cause updater to fail to download new version of Neuron.
+
+So far Electron 7's asynchronous request/response-style IPC has been working very well, we are going to migrate more internal communications to use that.
+
+### Syncing
+
+We've improved the sync and block scan, making it more stable and faster (up to 2x on macOS and 3-4x on Windows). Block and other data's DB access was tweaked to write less frequently and read more quickly. We're still tweaking this and planning to enable CKB's indexer module in the near future, to make the sync a lot faster.
+
+### Other features and changes
+
+* Prevent multiple instances of Neuron from running at the same time.
+* Change the QR reader to read an image from the desktop, instead of scanning with the camera.
+* Update the network and sync status display to show more information.
+
+### Bug fixes
+
+* Fixed an issue that when a transaction has many inputs or outputs the wallet cannot load it and the UI would display empty history list.
+* Fixed an issue that could occur when sending transaction.
+
+
+# [0.26.3](https://github.com/nervosnetwork/neuron/compare/v0.26.0...v0.26.3) (2020-01-07)
+
+Happy New Year and welcome to the v0.26.3 release of Neuron!
+
+### New look and feel
+
+Neuron has a new look and feel that we hope you will like. We're still designing and tweaking many of the UI parts so please stay tuned as there're more to come in future releases.
+
+### Bundled CKB node
+
+CKB v0.26.1 was released on Dec 30th, 2019. This version of CKB node is now bundled and preconfigured in Neuron.
+
+### Nervos DAO
+
+There're many improvements for Nervos DAO feature, some of the key changes include:
+
+* Allow depositing all balance to Nervos DAO. When the user does so, show hint to remind them to reserve some CKB for withdraw operation.
+* Added the Current Compensation Period dialog showing explanation of epochs period.
+* Label Nervos DAO transactions in recent activities.
+
+### Electron 7
+
+We updated to Electron 7 in this release. Electron 7 added `ipcRenderer.invoke()` and `ipcMain.handle()` for asynchronous request/response-style IPC, which are recommended over the `remote` module. To take advantage of that, we refactored data flow between wallet core and UI layers, replacing `remote` usage with `ipcRenderer.invoke()` and `ipcMain.handle()`.
+
+### Bug fixes
+
+* Fixed a lot of bugs related to block syncing.
+* Fixed minor bugs with Nervos DAO feature.
+* Fixed an issue that transaction detail window shows blank content.
+* Fixed a bug that allows transaction fee price to be set as non-integer number.
+
+
+
 # [0.26.0](https://github.com/nervosnetwork/neuron/compare/v0.25.2...v0.26.0) (2019-12-06)
 
 
@@ -854,4 +1267,3 @@ We also addressed several other bugs to make the Neuron wallet more stable.
 * **package:** Rename package task to release, publish to GitHub ([e3d473e](https://github.com/nervosnetwork/neuron/commit/e3d473e))
 * call methods of app controller with remote module ([cdc93a0](https://github.com/nervosnetwork/neuron/commit/cdc93a0))
 * subscribe network list from neuron-wallet in neuron-ui ([b56ae1c](https://github.com/nervosnetwork/neuron/commit/b56ae1c))
-

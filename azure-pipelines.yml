@@ -4,7 +4,6 @@ trigger:
     include:
       - master
       - develop
-      - e2e-tests
       - rc/*
   tags:
     include:
@@ -68,7 +67,7 @@ stages:
   - job: win
     displayName: Windows
     pool:
-      vmImage: 'windows-2019'
+      vmImage: 'vs2017-win2016'
     strategy:
       matrix:
         node_12_x:
@@ -84,30 +83,10 @@ stages:
         yarn bootstrap
         set CI=false
         yarn build
-      name: Build
+      name: Bootstrap
     - script: |
         set CI=true
-        yarn test
-      name: Test
-
-- stage: e2e_tests
-  displayName: Integration Tests
-  dependsOn: []
-  jobs:
-  - job: Integration
-    displayName: Integration Tests
-    pool:
-      vmImage: 'macos-10.14'
-    steps:
-    - task: NodeTool@0
-      inputs:
-        versionSpec: 12.x
-      displayName: 'Install Node.js'
-    - script: |
-        yarn global add lerna
-        yarn bootstrap
-      name: Bootstrap
-    - script: yarn test:e2e
+        yarn test:ci
       name: Test
 
 - stage: release
@@ -168,14 +147,15 @@ stages:
   - job: release_win
     displayName: Release Windows
     pool:
-      vmImage: 'macos-10.14'
+      vmImage: 'vs2017-win2016'
     steps:
     - task: NodeTool@0
       inputs:
         versionSpec: 12.x
       displayName: 'Install Node.js'
+    - script: yarn global add lerna
+      displayName: 'Install lerna'
     - script: |
-        yarn global add lerna
         yarn bootstrap
       name: Bootstrap
     - task: DownloadSecureFile@1
@@ -183,7 +163,7 @@ stages:
       displayName: 'Download Windows Signing Certificate'
       inputs:
         secureFile: Neuron_win.p12
-    - script: |
+    - pwsh: |
         ./scripts/download-ckb.sh win
         yarn release win
       name: Release

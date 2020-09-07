@@ -1,8 +1,10 @@
 import { useState, useMemo, useCallback } from 'react'
-import { updateWalletProperty } from 'states/stateProvider/actionCreators'
-import { StateDispatch } from 'states/stateProvider/reducer'
-import { ErrorCode, MAX_WALLET_NAME_LENGTH } from 'utils/const'
+import { useHistory } from 'react-router-dom'
+import { StateDispatch, updateWalletProperty } from 'states'
+import { ErrorCode, ResponseCode, RoutePath, CONSTANTS } from 'utils'
 import i18n from 'utils/i18n'
+
+const { MAX_WALLET_NAME_LENGTH } = CONSTANTS
 
 export const useWalletEditor = () => {
   const [name, setName] = useState('')
@@ -16,8 +18,10 @@ export const useWalletEditor = () => {
     initialize,
     name: {
       value: name,
-      onChange: (_e: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>, value?: string) =>
-        undefined !== value && setName(value),
+      onChange: (e: React.SyntheticEvent<HTMLInputElement>) => {
+        const { value } = e.target as HTMLInputElement
+        setName(value)
+      },
     },
   }
 }
@@ -36,13 +40,30 @@ export const useInputs = ({ name }: ReturnType<typeof useWalletEditor>) => {
   )
 }
 
-export const useOnConfirm = (name: string = '', id: string = '', history: any, dispatch: StateDispatch) => {
-  return useCallback(() => {
-    updateWalletProperty({
-      id,
-      name,
-    })(dispatch, history)
-  }, [name, id, history, dispatch])
+export const useOnSubmit = (
+  name: string = '',
+  id: string = '',
+  history: ReturnType<typeof useHistory>,
+  dispatch: StateDispatch,
+  disabled: boolean
+) => {
+  return useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault()
+      if (disabled) {
+        return
+      }
+      updateWalletProperty({
+        id,
+        name,
+      })(dispatch).then(status => {
+        if (status === ResponseCode.SUCCESS) {
+          history.push(RoutePath.SettingsWallets)
+        }
+      })
+    },
+    [name, id, history, dispatch, disabled]
+  )
 }
 
 export const useHint = (name: string, usedNames: string[], t: Function): string | null => {
@@ -60,6 +81,6 @@ export const useHint = (name: string, usedNames: string[], t: Function): string 
 export default {
   useWalletEditor,
   useInputs,
-  useOnConfirm,
+  useOnSubmit,
   useHint,
 }

@@ -1,17 +1,17 @@
 import React from 'react'
-import { Route } from 'react-router-dom'
 import { storiesOf } from '@storybook/react'
-import { withKnobs, text } from '@storybook/addon-knobs'
+import { withKnobs, text, boolean } from '@storybook/addon-knobs'
 import StoryRouter from 'storybook-react-router'
 import { action } from '@storybook/addon-actions'
 import Overview from 'components/Overview'
-import initStates from 'states/initStates'
-import { StateWithDispatch } from 'states/stateProvider/reducer'
+import { initStates, NeuronWalletContext } from 'states'
 import transactions from './data/transactions'
 import addresses from './data/addresses'
 
+const dispatch = action('Dispatch')
+
 const stateTemplate = {
-  dispatch: (dispatchAction: any) => action(dispatchAction),
+  dispatch,
   ...initStates,
   app: {
     ...initStates.app,
@@ -61,19 +61,19 @@ const states = {
   'Has more than 10 Activities': stateTemplate,
 }
 
-const OverviewWithRouteProps = (props: StateWithDispatch) => (
-  <Route path="/" render={routeProps => <Overview {...routeProps} {...props} />} />
-)
-
 const stories = storiesOf(`Overview`, module).addDecorator(StoryRouter())
 
-Object.entries(states).forEach(([title, props]) => {
-  stories.add(title, () => <OverviewWithRouteProps {...props} />)
+Object.entries(states).forEach(([title, state]) => {
+  stories.add(title, () => (
+    <NeuronWalletContext.Provider value={{ state, dispatch }}>
+      <Overview />
+    </NeuronWalletContext.Provider>
+  ))
 })
 
 stories.addDecorator(withKnobs).add('With knobs', () => {
-  const props = {
-    dispatch: (dispatchAction: any) => action(dispatchAction),
+  const state = {
+    dispatch,
     ...initStates,
     app: {
       ...initStates.app,
@@ -102,6 +102,7 @@ stories.addDecorator(withKnobs).add('With knobs', () => {
           description: text(`${idx}-Description`, tx.description),
           blockNumber: text(`${idx}-BlockNumber`, tx.blockNumber),
           status: text(`${idx}-Status`, tx.status) as 'pending' | 'success' | 'failed',
+          nervosDao: boolean('nervos dao', false),
         })),
       },
       tipBlockNumber: text('Tip block number', '123'),
@@ -119,5 +120,9 @@ stories.addDecorator(withKnobs).add('With knobs', () => {
       ],
     },
   }
-  return <OverviewWithRouteProps {...props} />
+  return (
+    <NeuronWalletContext.Provider value={{ state, dispatch }}>
+      <Overview />
+    </NeuronWalletContext.Provider>
+  )
 })

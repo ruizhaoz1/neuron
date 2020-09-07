@@ -2,7 +2,7 @@
   "name": "neuron",
   "productName": "Neuron",
   "description": "CKB Neuron Wallet",
-  "version": "0.26.0",
+  "version": "0.32.2",
   "private": true,
   "author": {
     "name": "Nervos Core Dev",
@@ -22,16 +22,17 @@
     "packages/*"
   ],
   "scripts": {
-    "bootstrap": "lerna bootstrap && lerna link",
+    "bootstrap": "npx cross-env LUMOS_NODE_RUNTIME=electron LUMOS_NODE_RUNTIME_VERSION=9.0.2 lerna bootstrap && lerna link",
     "start:ui": "cd packages/neuron-ui && yarn run start",
     "start:wallet": "cd packages/neuron-wallet && yarn run start:dev",
     "start": "concurrently \"cross-env BROWSER=none yarn run start:ui\" \"wait-on http://localhost:3000 && yarn run start:wallet\"",
     "clean": "lerna run --stream clean",
     "prebuild": "yarn clean",
     "build": "lerna run --stream build",
+    "build:main": "lerna run build --scope=neuron-wallet",
     "release": "yarn build && ./scripts/copy-ui-files.sh && ./scripts/release.sh",
     "test": "lerna run --parallel test",
-    "test:e2e": "yarn build && ./scripts/copy-ui-files.sh && lerna run --parallel test:e2e",
+    "test:ci": "yarn build:main && yarn test",
     "lint": "lerna run --stream lint",
     "postinstall": "lerna run rebuild:nativemodules",
     "db:chain": "node ./node_modules/.bin/typeorm"
@@ -43,18 +44,20 @@
   },
   "devDependencies": {
     "@types/jest": "24.0.18",
-    "@typescript-eslint/eslint-plugin": "2.10.0",
-    "@typescript-eslint/parser": "2.10.0",
+    "@typescript-eslint/eslint-plugin": "2.19.0",
+    "@typescript-eslint/parser": "2.19.0",
     "concurrently": "4.1.2",
     "cross-env": "5.2.1",
     "eslint": "6.7.2",
     "husky": "3.0.5",
     "lerna": "3.16.4",
     "ncp": "2.0.0",
-    "nodemon": "1.19.2",
     "ts-jest": "24.0.2",
-    "typescript": "3.7.3",
+    "typescript": "3.8.2",
     "wait-on": "3.3.0"
+  },
+  "resolutions": {
+    "@types/node": "12.12.14"
   },
   "dependencies": {}
 }

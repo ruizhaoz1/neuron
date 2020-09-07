@@ -1,10 +1,13 @@
+import { SYNC_REBUILD_SINCE_VERSION } from 'utils/const'
+
 export enum LocalCacheKey {
   Addresses = 'addresses',
   Networks = 'networks',
   Wallets = 'wallets',
   CurrentWallet = 'currentWallet',
   CurrentNetworkID = 'currentNetworkID',
-  SystemScript = 'systemScript',
+  CacheClearDate = 'cacheClearDate',
+  SyncRebuildNotification = 'syncRebuildNotification',
 }
 
 export const addresses = {
@@ -106,28 +109,22 @@ export const currentNetworkID = {
   },
 }
 
-export const systemScript = {
-  save: ({ codeHash = '' }: { codeHash: string }) => {
-    window.localStorage.setItem(LocalCacheKey.SystemScript, JSON.stringify({ codeHash }))
+export const cacheClearDate = {
+  save: (date: string) => {
+    window.localStorage.setItem(LocalCacheKey.CacheClearDate, date)
     return true
   },
-  load: (): { codeHash: string } => {
-    try {
-      const systemScriptStr = window.localStorage.getItem(LocalCacheKey.SystemScript) || `{codeHash: ''}`
-      return JSON.parse(systemScriptStr)
-    } catch {
-      console.error(`Cannot parse system script`)
-      return { codeHash: '' }
-    }
+  load: () => {
+    return window.localStorage.getItem(LocalCacheKey.CacheClearDate) ?? ''
   },
 }
 
-export default {
-  LocalCacheKey,
-  addresses,
-  networks,
-  wallets,
-  currentWallet,
-  currentNetworkID,
-  systemScript,
+export const syncRebuildNotification = {
+  save: () => {
+    window.localStorage.setItem(LocalCacheKey.SyncRebuildNotification, SYNC_REBUILD_SINCE_VERSION)
+    return true
+  },
+  load: () => {
+    return window.localStorage.getItem(LocalCacheKey.SyncRebuildNotification)
+  },
 }
